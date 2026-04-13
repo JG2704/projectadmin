@@ -1,0 +1,14 @@
+api:
+
+cd hasta donde esta el main.py y despues uvicorn main:app --host 0.0.0.0 --port 8000 --reload
+
+Frontend:
+
+Abrir android studio y correr el dispositivo virtual, luego entrar a la carpeta petlodge_app y correr el comando flutter run --debug (o si da fallos, flutter run --no-enable-impeller) en la terminal.
+
+Para hacer un hot reload, simplemente guardar los cambios en el código de python y la aplicación se actualizará automáticamente, en el frontend hay que guardar y darle r en la terminal.
+
+Credenciales de test:
+
+correo: cliente@hotel.com
+contraseña: 123456
