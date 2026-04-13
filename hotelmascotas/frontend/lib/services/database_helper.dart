@@ -304,7 +304,7 @@ class DatabaseHelper {
     });
 
     // Habitaciones
-    await db.insert('habitacion', {'numero': '101', 'estado': 'disponible'});
+    await db.insert('habitacion', {'numero': '101', 'estado': 'ocupado'});
     await db.insert('habitacion', {'numero': '102', 'estado': 'disponible'});
     await db.insert('habitacion', {'numero': '103', 'estado': 'disponible'});
 
