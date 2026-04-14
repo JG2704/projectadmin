@@ -3,7 +3,7 @@ from pathlib import Path
 import sqlite3
 from typing import Any, Dict, List, Optional
 
-from fastapi import FastAPI, HTTPException
+from fastapi import FastAPI, Header, HTTPException
 from pydantic import BaseModel
 
 app = FastAPI(title="API Hotel de Mascotas - SQLite")
@@ -69,6 +69,15 @@ def get_conn() -> sqlite3.Connection:
     conn.row_factory = sqlite3.Row
     conn.execute("PRAGMA foreign_keys = ON")
     return conn
+
+
+def resolve_current_user_id(x_user_id: Optional[int] = Header(default=None, alias="X-User-Id")) -> int:
+    user_id = x_user_id if x_user_id is not None else DEFAULT_USER_ID
+    with get_conn() as conn:
+        exists = conn.execute("SELECT 1 FROM usuario WHERE id=? AND activo=1", (user_id,)).fetchone()
+    if not exists:
+        raise HTTPException(status_code=404, detail="Usuario no encontrado")
+    return user_id
 
 
 def table_exists(conn: sqlite3.Connection, table_name: str) -> bool:
@@ -273,7 +282,8 @@ def register(datos: UsuarioRegister):
 
 
 @app.get("/users/me")
-def get_perfil():
+def get_perfil(x_user_id: Optional[int] = Header(default=None, alias="X-User-Id")):
+    user_id = resolve_current_user_id(x_user_id)
     with get_conn() as conn:
         user = conn.execute(
             """
@@ -281,13 +291,13 @@ def get_perfil():
             FROM usuario u
             WHERE u.id=?
             """,
-            (DEFAULT_USER_ID,),
+            (user_id,),
         ).fetchone()
         if not user:
             raise HTTPException(status_code=404, detail="Usuario no encontrado")
 
         mascotas = conn.execute(
-            "SELECT COUNT(*) AS total FROM mascota WHERE id_usuario=?", (DEFAULT_USER_ID,)
+            "SELECT COUNT(*) AS total FROM mascota WHERE id_usuario=?", (user_id,)
         ).fetchone()["total"]
 
         reservas = conn.execute(
@@ -297,7 +307,7 @@ def get_perfil():
             JOIN mascota m ON m.id = r.id_mascota
             WHERE m.id_usuario=?
             """,
-            (DEFAULT_USER_ID,),
+            (user_id,),
         ).fetchone()["total"]
 
         dias_row = conn.execute(
@@ -308,7 +318,7 @@ def get_perfil():
             JOIN estado_reserva er ON er.id = r.id_estado
             WHERE m.id_usuario=? AND er.estado='activa'
             """,
-            (DEFAULT_USER_ID,),
+            (user_id,),
         ).fetchone()
 
     perfil = dict(user)
@@ -317,23 +327,25 @@ def get_perfil():
 
 
 @app.put("/users/me")
-def update_perfil(datos: UsuarioUpdate):
+def update_perfil(datos: UsuarioUpdate, x_user_id: Optional[int] = Header(default=None, alias="X-User-Id")):
+    user_id = resolve_current_user_id(x_user_id)
     with get_conn() as conn:
         conn.execute(
             "UPDATE usuario SET nombre=?, email=?, telefono=? WHERE id=?",
-            (datos.nombre, datos.email, datos.telefono, DEFAULT_USER_ID),
+            (datos.nombre, datos.email, datos.telefono, user_id),
         )
         conn.commit()
         user = conn.execute(
             "SELECT id, cedula, nombre, email, telefono, direccion, id_tipo_pago, id_tipo_usuario FROM usuario WHERE id=?",
-            (DEFAULT_USER_ID,),
+            (user_id,),
         ).fetchone()
 
     return {"success": True, "data": dict(user)}
 
 
 @app.get("/pets", response_model=List[MascotaResponse])
-def get_mascotas():
+def get_mascotas(x_user_id: Optional[int] = Header(default=None, alias="X-User-Id")):
+    user_id = resolve_current_user_id(x_user_id)
     with get_conn() as conn:
         rows = conn.execute(
             """
@@ -343,13 +355,14 @@ def get_mascotas():
             WHERE m.id_usuario=?
             ORDER BY m.id DESC
             """,
-            (DEFAULT_USER_ID,),
+            (user_id,),
         ).fetchall()
         return [serialize_pet_row(conn, row) for row in rows]
 
 
 @app.post("/pets", response_model=MascotaResponse)
-def create_mascota(m: MascotaBase):
+def create_mascota(m: MascotaBase, x_user_id: Optional[int] = Header(default=None, alias="X-User-Id")):
+    user_id = resolve_current_user_id(x_user_id)
     with get_conn() as conn:
         tipo_id = ensure_tipo_mascota(conn, m.especie, m.raza)
         cur = conn.execute(
@@ -364,7 +377,7 @@ def create_mascota(m: MascotaBase):
                 normalize_weight_to_db(m.peso),
                 None if m.fecha_nacimiento == "No especificado" else m.fecha_nacimiento,
                 m.notas,
-                DEFAULT_USER_ID,
+                user_id,
                 tipo_id,
             ),
         )
@@ -388,11 +401,14 @@ def create_mascota(m: MascotaBase):
 
 
 @app.put("/pets/{pet_id}", response_model=MascotaResponse)
-def update_mascota(pet_id: int, m: MascotaBase):
+def update_mascota(
+    pet_id: int, m: MascotaBase, x_user_id: Optional[int] = Header(default=None, alias="X-User-Id")
+):
+    user_id = resolve_current_user_id(x_user_id)
     with get_conn() as conn:
         existing = conn.execute(
             "SELECT id FROM mascota WHERE id=? AND id_usuario=?",
-            (pet_id, DEFAULT_USER_ID),
+            (pet_id, user_id),
         ).fetchone()
         if not existing:
             raise HTTPException(status_code=404, detail="Mascota no encontrada")
@@ -436,7 +452,8 @@ def update_mascota(pet_id: int, m: MascotaBase):
 
 
 @app.post("/reservations")
-def create_reserva(r: ReservaCreateRequest):
+def create_reserva(r: ReservaCreateRequest, x_user_id: Optional[int] = Header(default=None, alias="X-User-Id")):
+    user_id = resolve_current_user_id(x_user_id)
     ingreso = datetime.fromisoformat(r.fecha_ingreso.replace("Z", "+00:00")).date()
     salida = datetime.fromisoformat(r.fecha_salida.replace("Z", "+00:00")).date()
     dias = max((salida - ingreso).days, 1)
@@ -449,17 +466,19 @@ def create_reserva(r: ReservaCreateRequest):
     with get_conn() as conn:
         mascota = conn.execute(
             "SELECT id FROM mascota WHERE nombre=? AND id_usuario=? ORDER BY id DESC LIMIT 1",
-            (r.name, DEFAULT_USER_ID),
+            (r.name, user_id),
         ).fetchone()
         if not mascota:
             raise HTTPException(status_code=404, detail="Mascota no encontrada")
 
         habitacion = conn.execute(
-            "SELECT id FROM habitacion WHERE numero=?",
+            "SELECT id, estado FROM habitacion WHERE numero=?",
             (room_number,),
         ).fetchone()
         if not habitacion:
             raise HTTPException(status_code=404, detail="Habitación no encontrada")
+        if (habitacion["estado"] or "").lower() != "disponible":
+            raise HTTPException(status_code=409, detail="Habitación no disponible")
 
         estado = conn.execute("SELECT id FROM estado_reserva WHERE estado='activa'").fetchone()
         tipo_hosp = conn.execute(
@@ -483,6 +502,7 @@ def create_reserva(r: ReservaCreateRequest):
                 tipo_hosp["id"],
             ),
         )
+        conn.execute("UPDATE habitacion SET estado='ocupado' WHERE id=?", (habitacion["id"],))
         reserva_id = cur.lastrowid
         conn.commit()
 
@@ -507,7 +527,8 @@ def create_reserva(r: ReservaCreateRequest):
 
 
 @app.get("/reservations/history")
-def get_history():
+def get_history(x_user_id: Optional[int] = Header(default=None, alias="X-User-Id")):
+    user_id = resolve_current_user_id(x_user_id)
     with get_conn() as conn:
         rows = conn.execute(
             """
@@ -524,23 +545,25 @@ def get_history():
             WHERE m.id_usuario=?
             ORDER BY r.id DESC
             """,
-            (DEFAULT_USER_ID,),
+            (user_id,),
         ).fetchall()
 
         return [map_reservation_row(row) for row in rows]
 
 
 @app.patch("/reservations/{res_id}/cancel")
-def cancel_res(res_id: int):
+def cancel_res(res_id: int, x_user_id: Optional[int] = Header(default=None, alias="X-User-Id")):
+    user_id = resolve_current_user_id(x_user_id)
     with get_conn() as conn:
         active = conn.execute(
             """
-            SELECT r.id
+            SELECT r.id, r.id_habitacion, er.estado AS estado_actual
             FROM reserva r
             JOIN mascota m ON m.id = r.id_mascota
+            JOIN estado_reserva er ON er.id = r.id_estado
             WHERE r.id=? AND m.id_usuario=?
             """,
-            (res_id, DEFAULT_USER_ID),
+            (res_id, user_id),
         ).fetchone()
         if not active:
             raise HTTPException(status_code=404, detail="Reserva no encontrada")
@@ -552,13 +575,30 @@ def cancel_res(res_id: int):
             "UPDATE reserva SET id_estado=? WHERE id=?",
             (cancelled_state["id"], res_id),
         )
+        if (active["estado_actual"] or "").lower() == "activa":
+            other_active = conn.execute(
+                """
+                SELECT 1
+                FROM reserva r
+                JOIN estado_reserva er ON er.id = r.id_estado
+                WHERE r.id_habitacion=? AND r.id<>? AND er.estado='activa'
+                LIMIT 1
+                """,
+                (active["id_habitacion"], res_id),
+            ).fetchone()
+            if not other_active:
+                conn.execute(
+                    "UPDATE habitacion SET estado='disponible' WHERE id=?",
+                    (active["id_habitacion"],),
+                )
         conn.commit()
 
     return {"success": True}
 
 
 @app.get("/notifications")
-def get_notif():
+def get_notif(x_user_id: Optional[int] = Header(default=None, alias="X-User-Id")):
+    user_id = resolve_current_user_id(x_user_id)
     with get_conn() as conn:
         rows = conn.execute(
             """
@@ -568,7 +608,7 @@ def get_notif():
             WHERE n.id_usuario=?
             ORDER BY n.id DESC
             """,
-            (DEFAULT_USER_ID,),
+            (user_id,),
         ).fetchall()
 
     mapped = []
@@ -594,7 +634,8 @@ def get_notif():
 
 
 @app.get("/payments/methods")
-def get_tarjetas():
+def get_tarjetas(x_user_id: Optional[int] = Header(default=None, alias="X-User-Id")):
+    user_id = resolve_current_user_id(x_user_id)
     with get_conn() as conn:
         row = conn.execute(
             """
@@ -603,7 +644,7 @@ def get_tarjetas():
             JOIN tipo_pago tp ON tp.id = u.id_tipo_pago
             WHERE u.id=?
             """,
-            (DEFAULT_USER_ID,),
+            (user_id,),
         ).fetchone()
 
     if not row:
@@ -615,12 +656,13 @@ def get_tarjetas():
 
 
 @app.post("/payments/methods")
-def add_tarjeta(t: TarjetaCreate):
+def add_tarjeta(t: TarjetaCreate, x_user_id: Optional[int] = Header(default=None, alias="X-User-Id")):
+    user_id = resolve_current_user_id(x_user_id)
     with get_conn() as conn:
         tarjeta = conn.execute("SELECT id FROM tipo_pago WHERE tipo='tarjeta'").fetchone()
         conn.execute(
             "UPDATE usuario SET id_tipo_pago=? WHERE id=?",
-            (tarjeta["id"], DEFAULT_USER_ID),
+            (tarjeta["id"], user_id),
         )
         conn.commit()
 
@@ -628,12 +670,13 @@ def add_tarjeta(t: TarjetaCreate):
 
 
 @app.delete("/payments/methods/{tarjeta_id}")
-def delete_tarjeta(tarjeta_id: int):
+def delete_tarjeta(tarjeta_id: int, x_user_id: Optional[int] = Header(default=None, alias="X-User-Id")):
+    user_id = resolve_current_user_id(x_user_id)
     with get_conn() as conn:
         efectivo = conn.execute("SELECT id FROM tipo_pago WHERE tipo='efectivo'").fetchone()
         conn.execute(
             "UPDATE usuario SET id_tipo_pago=? WHERE id=? AND id_tipo_pago=?",
-            (efectivo["id"], DEFAULT_USER_ID, tarjeta_id),
+            (efectivo["id"], user_id, tarjeta_id),
         )
         conn.commit()
 
