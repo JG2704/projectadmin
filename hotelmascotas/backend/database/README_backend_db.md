@@ -1,19 +1,26 @@
 # Base de datos backend - PetLodge
 
 ## Archivos incluidos
-- `schema.sql`: crea todas las tablas y llaves foráneas
-- `seed.sql`: inserta datos semilla y datos de prueba
-- `petlodge_backend.db`: base SQLite ya construida y lista para usar
+- `schema.sql`: crea las tablas y llaves foráneas del backend.
+- `seed.sql`: inserta datos semilla y datos de prueba.
+- `petlodge_backend.db`: base SQLite compartida del backend.
 
-## Cómo abrirlo en DB Browser for SQLite
-1. Abrir **DB Browser for SQLite**
-2. Elegir **Open Database**
-3. Abrir `petlodge_backend.db`
+## Uso desde la API
+La API FastAPI (`backend/main.py`) usa esta base como fuente oficial de datos.
 
-## Si no funciona...
-1. Crear una base nueva en DB Browser
-2. Ir a **Execute SQL**
-3. Ejecutar primero `schema.sql`
-4. Ejecutar después `seed.sql`
-5. Guardar
+Comportamiento en startup:
+1. Si la tabla `usuario` no existe, ejecuta `schema.sql` y luego `seed.sql`.
+2. Si la tabla existe pero está vacía, ejecuta `seed.sql`.
+3. Si ya hay datos, no los sobreescribe.
 
+## Cómo abrirla en DB Browser for SQLite
+1. Abrir **DB Browser for SQLite**.
+2. Elegir **Open Database**.
+3. Abrir `petlodge_backend.db`.
+
+## Reinicialización manual
+Si necesitas reconstruir la base desde cero:
+1. Crear una base nueva.
+2. Ejecutar `schema.sql`.
+3. Ejecutar `seed.sql`.
+4. Guardar como `petlodge_backend.db`.
