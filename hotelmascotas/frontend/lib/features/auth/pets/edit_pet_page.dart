@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:dio/dio.dart';
 import '../../../models/pet_model.dart';
+import '../../../services/auth_service.dart';
 
 class EditPetPage extends StatefulWidget {
   final Pet pet;
@@ -62,14 +63,14 @@ class _EditPetPageState extends State<EditPetPage> {
     });
 
     try {
-      final dio = Dio();
+      final dio = await AuthService.getDioWithAuth();
       final petId = widget.pet.id; 
       
       if (petId == null) throw Exception("ID de mascota no válido");
 
       // Agregamos todos los campos al JSON que viaja a Python
       final response = await dio.put(
-        'http://10.0.2.2:8000/pets/$petId',
+        '/pets/$petId',
         data: {
           "nombre": nameController.text.trim(),
           "especie": typeController.text.trim(),

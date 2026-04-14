@@ -4,6 +4,7 @@ import '../home/home_page.dart';
 import '../pets/pets_page.dart';
 import '../history/history_page.dart'; 
 import '../profile/profile_page.dart';
+import '../../../services/auth_service.dart';
 
 class NotificationsPage extends StatefulWidget {
   const NotificationsPage({super.key});
@@ -32,8 +33,8 @@ class _NotificationsPageState extends State<NotificationsPage> {
     });
 
     try {
-      final dio = Dio();
-      final response = await dio.get('http://10.0.2.2:8000/notifications');
+      final dio = await AuthService.getDioWithAuth();
+      final response = await dio.get('/notifications');
 
       if (response.statusCode == 200) {
         setState(() {

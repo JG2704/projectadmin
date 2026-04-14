@@ -4,7 +4,8 @@ import '../pets/pets_page.dart';
 import '../history/history_page.dart'; 
 import '../notifications/notifications_page.dart';
 import '../profile/profile_page.dart';
-import '../history/create_reservation_page.dart'; 
+import '../history/create_reservation_page.dart';
+import '../../../services/auth_service.dart'; 
 
 class HomePage extends StatefulWidget {
   final String userName;
@@ -87,11 +88,21 @@ class _HomePageState extends State<HomePage> {
     setState(() => _isLoading = true);
 
     try {
-      final dio = Dio();
+      // Verificar si el usuario está autenticado
+      final isAuth = await AuthService.isAuthenticated();
+      if (!isAuth) {
+        if (mounted) {
+          Navigator.pushNamedAndRemoveUntil(context, '/login', (route) => false);
+        }
+        return;
+      }
 
-      final userRes = await dio.get('http://10.0.2.2:8000/users/me');
-      final historyRes = await dio.get('http://10.0.2.2:8000/reservations/history');
-      final petsRes = await dio.get('http://10.0.2.2:8000/pets');
+      // Obtener Dio con user_id en headers
+      final dio = await AuthService.getDioWithAuth();
+
+      final userRes = await dio.get('/users/me');
+      final historyRes = await dio.get('/reservations/history');
+      final petsRes = await dio.get('/pets');
 
       if (mounted) {
         setState(() {
@@ -107,6 +118,7 @@ class _HomePageState extends State<HomePage> {
       debugPrint("Error cargando dashboard: $e");
       if (mounted) setState(() => _isLoading = false);
     }
+  }
   }
 
   @override

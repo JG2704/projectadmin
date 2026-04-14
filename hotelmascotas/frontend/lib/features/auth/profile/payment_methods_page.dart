@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
-import 'package:dio/dio.dart'; 
+import 'package:dio/dio.dart';
+import '../../../services/auth_service.dart'; 
 
 class PaymentMethodsPage extends StatefulWidget {
   const PaymentMethodsPage({super.key});
@@ -22,8 +23,8 @@ class _PaymentMethodsPageState extends State<PaymentMethodsPage> {
   // LEER TARJETAS
   Future<void> _fetchCards() async {
     try {
-      final dio = Dio();
-      final response = await dio.get('http://10.0.2.2:8000/payments/methods');
+      final dio = await AuthService.getDioWithAuth();
+      final response = await dio.get('/payments/methods');
       if (response.statusCode == 200) {
         setState(() {
           _cards = response.data;
@@ -42,9 +43,9 @@ class _PaymentMethodsPageState extends State<PaymentMethodsPage> {
     String nuevoNumero = "**** ${1000 + _cards.length + 1}";
     
     try {
-      final dio = Dio();
+      final dio = await AuthService.getDioWithAuth();
       final response = await dio.post(
-        'http://10.0.2.2:8000/payments/methods',
+        '/payments/methods',
         data: {"numero": nuevoNumero},
       );
       if (response.statusCode == 200) {
@@ -58,8 +59,8 @@ class _PaymentMethodsPageState extends State<PaymentMethodsPage> {
   // ELIMINAR TARJETA
   Future<void> _removeCard(int id) async {
     try {
-      final dio = Dio();
-      final response = await dio.delete('http://10.0.2.2:8000/payments/methods/$id');
+      final dio = await AuthService.getDioWithAuth();
+      final response = await dio.delete('/payments/methods/$id');
       if (response.statusCode == 200) {
         _fetchCards(); // Refrescamos la lista
       }

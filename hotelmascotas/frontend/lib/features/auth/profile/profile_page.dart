@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:dio/dio.dart';
+import '../../../services/auth_service.dart';
 
 import 'edit_profile_page.dart';
 import 'help_page.dart';
@@ -36,8 +37,8 @@ class _ProfilePageState extends State<ProfilePage> {
   // Método asíncrono para traer los datos del backend
   Future<void> _fetchUserProfile() async {
     try {
-      final dio = Dio();
-      final response = await dio.get('http://10.0.2.2:8000/users/me');
+      final dio = await AuthService.getDioWithAuth();
+      final response = await dio.get('/users/me');
 
       if (response.statusCode == 200) {
         setState(() {

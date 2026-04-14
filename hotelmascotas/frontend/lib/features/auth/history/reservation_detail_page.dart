@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:dio/dio.dart';
+import '../../../services/auth_service.dart';
 
 class ReservationDetailPage extends StatefulWidget {
   final Map<String, dynamic> reservation;
@@ -36,10 +37,10 @@ class _ReservationDetailPageState extends State<ReservationDetailPage> {
     setState(() => _isCancelling = true);
 
     try {
-      final dio = Dio();
+      final dio = await AuthService.getDioWithAuth();
       final resId = widget.reservation["id"];
 
-      final response = await dio.patch('http://10.0.2.2:8000/reservations/$resId/cancel');
+      final response = await dio.patch('/reservations/$resId/cancel');
 
       if (response.statusCode == 200 && mounted) {
         Navigator.pop(context, true);

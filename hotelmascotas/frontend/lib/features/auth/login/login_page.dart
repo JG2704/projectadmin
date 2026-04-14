@@ -1,6 +1,8 @@
 import 'package:flutter/material.dart';
+import 'package:dio/dio.dart';
 import '../register/register_page.dart';
 import '../home/home_page.dart';
+import '../../../services/auth_service.dart';
 
 class LoginPage extends StatefulWidget {
   const LoginPage({super.key});
@@ -14,8 +16,10 @@ class _LoginPageState extends State<LoginPage> {
   final TextEditingController _emailController = TextEditingController();
   final TextEditingController _passwordController = TextEditingController();
 
-  // Método login
-  void _login() {
+  bool _isLoading = false;
+
+  // Método login - AHORA LLAMA A LA API REAL
+  Future<void> _login() async {
     String email = _emailController.text.trim();
     String password = _passwordController.text.trim();
 
@@ -24,17 +28,73 @@ class _LoginPageState extends State<LoginPage> {
       return;
     }
 
-    // Simulación login
-    print("Email: $email");
-    print("Password: $password");
+    setState(() => _isLoading = true);
 
-    // 🔥 AQUÍ YA USAMOS HomePage (esto elimina el error)
-    Navigator.pushReplacement(
-      context,
-      MaterialPageRoute(
-        builder: (context) => const HomePage(userName: "Juan Pérez"),
-      ),
-    );
+    try {
+      final dio = Dio();
+      
+      // Llamada real a la API del backend
+      final response = await dio.post(
+        'http://10.0.2.2:8000/auth/login',
+        data: {
+          'email': email,
+          'password': password,
+        },
+      );
+
+      if (response.statusCode == 200) {
+        // Extraer datos de la respuesta
+        final token = response.data['token']; // Ej: "token_user_1"
+        final userType = response.data['id_tipo_usuario']; // 1 = cliente, 2 = admin
+
+        // Extraer el user ID del token (formato: "token_user_X")
+        final userId = int.parse(token.split('_').last);
+        
+        // Guardar user ID y token en almacenamiento local
+        await AuthService.saveUserId(userId);
+        await AuthService.saveToken(token);
+
+        // Obtener nombre del usuario de la respuesta o usar email
+        final userName = email.split('@').first;
+
+        if (mounted) {
+          // Navegar a HomePage con los datos del usuario
+          Navigator.pushReplacement(
+            context,
+            MaterialPageRoute(
+              builder: (context) => HomePage(userName: userName),
+            ),
+          );
+        }
+      }
+    } on DioException catch (e) {
+      String errorMsg = "Error de conexión";
+      
+      if (e.response != null) {
+        // Error del servidor (401, 400, etc.)
+        if (e.response?.statusCode == 401) {
+          errorMsg = "Credenciales incorrectas";
+        } else {
+          errorMsg = e.response?.data['detail'] ?? "Error en el servidor";
+        }
+      } else if (e.type == DioExceptionType.connectionTimeout) {
+        errorMsg = "Conexión expirada. ¿Backend está encendido?";
+      } else if (e.type == DioExceptionType.receiveTimeout) {
+        errorMsg = "Servidor tardó demasiado en responder";
+      }
+      
+      if (mounted) {
+        _showMessage(errorMsg);
+      }
+    } catch (e) {
+      if (mounted) {
+        _showMessage("Error inesperado: $e");
+      }
+    } finally {
+      if (mounted) {
+        setState(() => _isLoading = false);
+      }
+    }
   }
 
   void _showMessage(String message) {
@@ -166,8 +226,17 @@ class _LoginPageState extends State<LoginPage> {
                             borderRadius: BorderRadius.circular(10),
                           ),
                         ),
-                        onPressed: _login,
-                        child: const Text("Iniciar Sesión"),
+                        onPressed: _isLoading ? null : _login,
+                        child: _isLoading
+                            ? const SizedBox(
+                                height: 20,
+                                width: 20,
+                                child: CircularProgressIndicator(
+                                  strokeWidth: 2,
+                                  valueColor: AlwaysStoppedAnimation<Color>(Colors.white),
+                                ),
+                              )
+                            : const Text("Iniciar Sesión"),
                       ),
                     ),
 

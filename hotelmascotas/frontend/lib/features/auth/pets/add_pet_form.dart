@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:dio/dio.dart';
 import '../../../models/pet_model.dart';
+import '../../../services/auth_service.dart';
 
 class AddPetForm extends StatefulWidget {
   const AddPetForm({super.key});
@@ -33,11 +34,11 @@ class _AddPetFormState extends State<AddPetForm> {
     });
 
     try {
-      final dio = Dio();
+      final dio = await AuthService.getDioWithAuth();
       
       // 2. Hacemos el POST a Python
       final response = await dio.post(
-        'http://10.0.2.2:8000/pets',
+        '/pets',
         data: {
           "nombre": nameController.text.trim(),
           "especie": typeController.text.trim(),

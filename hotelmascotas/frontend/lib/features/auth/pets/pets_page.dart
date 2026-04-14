@@ -7,6 +7,7 @@ import 'pet_detail_page.dart';
 import '../history/history_page.dart'; 
 import '../notifications/notifications_page.dart';
 import '../profile/profile_page.dart';
+import '../../../services/auth_service.dart';
 
 class PetsPage extends StatefulWidget {
   const PetsPage({super.key});
@@ -34,8 +35,8 @@ class _PetsPageState extends State<PetsPage> {
 // Método para traer las mascotas de Python
   Future<void> _fetchPets() async {
     try {
-      final dio = Dio();
-      final response = await dio.get('http://10.0.2.2:8000/pets');
+      final dio = await AuthService.getDioWithAuth();
+      final response = await dio.get('/pets');
 
       if (response.statusCode == 200) {
         List<dynamic> data = response.data;

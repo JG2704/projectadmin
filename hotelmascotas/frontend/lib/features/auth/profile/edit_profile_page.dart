@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
-import 'package:dio/dio.dart'; 
+import 'package:dio/dio.dart';
+import '../../../services/auth_service.dart'; 
 
 class EditProfilePage extends StatefulWidget {
   const EditProfilePage({super.key});
@@ -28,8 +29,8 @@ class _EditProfilePageState extends State<EditProfilePage> {
   // Cargamos los datos actuales del servidor para que el usuario vea qué está editando
   Future<void> _loadCurrentData() async {
     try {
-      final dio = Dio();
-      final response = await dio.get('http://10.0.2.2:8000/users/me');
+      final dio = await AuthService.getDioWithAuth();
+      final response = await dio.get('/users/me');
       if (response.statusCode == 200) {
         setState(() {
           _nameController.text = response.data['nombre'] ?? "";
@@ -49,9 +50,9 @@ class _EditProfilePageState extends State<EditProfilePage> {
     setState(() => _isSaving = true);
 
     try {
-      final dio = Dio();
+      final dio = await AuthService.getDioWithAuth();
       final response = await dio.put(
-        'http://10.0.2.2:8000/users/me',
+        '/users/me',
         data: {
           "nombre": _nameController.text.trim(),
           "email": _emailController.text.trim(),

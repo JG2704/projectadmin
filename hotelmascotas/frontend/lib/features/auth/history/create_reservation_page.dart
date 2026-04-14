@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:dio/dio.dart';
 import '../notifications/notifications_data.dart';
+import '../../../services/auth_service.dart';
 
 class CreateReservationPage extends StatefulWidget {
   final Function(Map<String, dynamic>)? onCreate;
@@ -34,8 +35,8 @@ class _CreateReservationPageState extends State<CreateReservationPage> {
   // MÉTODO PARA TRAER LAS MASCOTAS DESDE PYTHON
   Future<void> _fetchMyPets() async {
     try {
-      final dio = Dio();
-      final response = await dio.get('http://10.0.2.2:8000/pets');
+      final dio = await AuthService.getDioWithAuth();
+      final response = await dio.get('/pets');
       if (response.statusCode == 200) {
         setState(() {
           _myPets = response.data;
@@ -60,7 +61,7 @@ class _CreateReservationPageState extends State<CreateReservationPage> {
     });
 
     try {
-      final dio = Dio();
+      final dio = await AuthService.getDioWithAuth();
 
       final Map<String, dynamic> reservationData = {
         "name": _selectedPetName, // Enviamos el nombre seleccionado
@@ -71,7 +72,7 @@ class _CreateReservationPageState extends State<CreateReservationPage> {
       };
 
       final response = await dio.post(
-        'http://10.0.2.2:8000/reservations',
+        '/reservations',
         data: reservationData,
       );
 
