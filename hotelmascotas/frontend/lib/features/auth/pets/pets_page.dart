@@ -107,7 +107,7 @@ class _PetsPageState extends State<PetsPage> {
         unselectedItemColor: Colors.grey,
         onTap: (index) {
           if (index == 0) {
-            Navigator.pushReplacement(context, MaterialPageRoute(builder: (context) => const HomePage(userName: "Usuario")));
+            Navigator.pushReplacement(context, MaterialPageRoute(builder: (context) => const HomePage(userName: "Usuario", userId: 0)));
           } else if (index == 1) {
             Navigator.pushReplacement(context, MaterialPageRoute(builder: (_) => const PetsPage()));
           } else if (index == 2) {

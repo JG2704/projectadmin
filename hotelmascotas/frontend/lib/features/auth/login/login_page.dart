@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:dio/dio.dart';
 import '../register/register_page.dart';
 import '../home/home_page.dart';
 
@@ -15,7 +16,11 @@ class _LoginPageState extends State<LoginPage> {
   final TextEditingController _passwordController = TextEditingController();
 
   // Método login
-  void _login() {
+// Variable para controlar si mostramos la bolita de carga
+  bool _isLoading = false;
+
+  // Método login
+  Future<void> _login() async {
     String email = _emailController.text.trim();
     String password = _passwordController.text.trim();
 
@@ -24,17 +29,59 @@ class _LoginPageState extends State<LoginPage> {
       return;
     }
 
-    // Simulación login
-    print("Email: $email");
-    print("Password: $password");
+    // Cambiamos el estado para mostrar que está cargando
+    setState(() {
+      _isLoading = true;
+    });
 
-    // 🔥 AQUÍ YA USAMOS HomePage (esto elimina el error)
-    Navigator.pushReplacement(
-      context,
-      MaterialPageRoute(
-        builder: (context) => const HomePage(userName: "Juan Pérez"),
-      ),
-    );
+    try {
+      final dio = Dio();
+      
+      // Hacemos la petición al servidor de Python
+      final response = await dio.post(
+        'http://10.0.2.2:8000/auth/login',
+        data: {
+          'email': email,
+          'password': password,
+        },
+      );
+
+      // Si el servidor responde con éxito (Status 200)
+if (response.statusCode == 200) {
+        final userData = response.data;
+        
+        // 🔥 Declaramos las variables locales para usarlas abajo
+        final String nombreUsuario = userData['nombre'] ?? "Usuario";
+        final int idUsuario = userData['user_id']; 
+
+        if (!mounted) return;
+        
+        Navigator.pushReplacement(
+          context,
+          MaterialPageRoute(
+            builder: (context) => HomePage(
+              userName: nombreUsuario, 
+              userId: idUsuario, // <--- Ahora sí tiene el valor definido arriba
+            ),
+          ),
+        );
+      }
+    } on DioException catch (e) {
+      // Manejo de errores de red o credenciales incorrectas
+      if (e.response != null && e.response?.statusCode == 401) {
+        _showMessage("Correo o contraseña incorrectos");
+      } else {
+        _showMessage("Error al conectar con el servidor");
+      }
+      debugPrint("Error de red: ${e.message}");
+    } finally {
+      // Sin importar si falló o tuvo éxito, quitamos el estado de carga
+      if (mounted) {
+        setState(() {
+          _isLoading = false;
+        });
+      }
+    }
   }
 
   void _showMessage(String message) {
@@ -94,15 +141,14 @@ class _LoginPageState extends State<LoginPage> {
 
             const SizedBox(height: 40),
 
-            // Card blanca
-            Expanded(
+            // Card blanca solo para los formularios
+            Padding(
+              padding: const EdgeInsets.symmetric(horizontal: 20),
               child: Container(
                 padding: const EdgeInsets.all(20),
-                decoration: const BoxDecoration(
+                decoration: BoxDecoration(
                   color: Colors.white,
-                  borderRadius: BorderRadius.vertical(
-                    top: Radius.circular(30),
-                  ),
+                  borderRadius: BorderRadius.circular(20),
                 ),
                 child: Column(
                   children: [
@@ -110,16 +156,19 @@ class _LoginPageState extends State<LoginPage> {
                       "Bienvenido",
                       style: TextStyle(
                         fontSize: 22,
+                        color: Color.fromARGB(255, 0, 0, 0),
                         fontWeight: FontWeight.bold,
                       ),
                     ),
 
                     const SizedBox(height: 10),
 
-                    const Text("Inicia sesión para continuar"),
+                    const Text(
+                      "Inicia sesión para continuar",
+                      style: TextStyle(color: Color.fromARGB(255, 0, 0, 0)),
+                    ),
 
                     const SizedBox(height: 20),
-
                     // EMAIL
                     TextField(
                       controller: _emailController,
@@ -166,8 +215,10 @@ class _LoginPageState extends State<LoginPage> {
                             borderRadius: BorderRadius.circular(10),
                           ),
                         ),
-                        onPressed: _login,
-                        child: const Text("Iniciar Sesión"),
+                        onPressed: _isLoading ? null : _login,
+                        child: _isLoading
+                            ? const CircularProgressIndicator(color: Colors.white)
+                            : const Text("Iniciar Sesión", style: TextStyle(color: Colors.white)),
                       ),
                     ),
 
@@ -183,14 +234,16 @@ class _LoginPageState extends State<LoginPage> {
                             Navigator.push(
                               context,
                               MaterialPageRoute(
-                                builder: (context) =>
-                                    const RegisterPage(),
+                                builder: (context) => const RegisterPage(),
                               ),
                             );
                           },
                           child: const Text(
                             "Regístrate",
-                            style: TextStyle(color: Colors.purple),
+                            style: TextStyle(
+                              color: Colors.purple,
+                              fontWeight: FontWeight.bold,
+                            ),
                           ),
                         ),
                       ],

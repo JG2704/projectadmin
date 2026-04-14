@@ -241,23 +241,25 @@ def initialize_database() -> None:
 def on_startup() -> None:
     initialize_database()
 
-
 @app.post("/auth/login")
 def login(datos: LoginRequest):
     with get_conn() as conn:
+        # 1. Traemos el NOMBRE también del SQL
         user = conn.execute(
-            "SELECT id, id_tipo_usuario FROM usuario WHERE email=? AND clave_hash=? AND activo=1",
+            "SELECT id, nombre, id_tipo_usuario FROM usuario WHERE email = ? AND clave_hash = ?",
             (datos.email, datos.password),
         ).fetchone()
 
-    if not user:
-        raise HTTPException(status_code=401, detail="Credenciales incorrectas")
-
-    return {
-        "success": True,
-        "token": f"token_user_{user['id']}",
-        "id_tipo_usuario": user["id_tipo_usuario"],
-    }
+    if user:
+        return {
+            "success": True,
+            "token": f"token_user_{user['id']}",
+            "id_tipo_usuario": user["id_tipo_usuario"],
+            "user_id": user["id"],
+            "nombre": user["nombre"], # <-- IMPORTANTE: Enviamos el nombre real
+        }
+    
+    raise HTTPException(status_code=401, detail="Credenciales incorrectas")
 
 
 @app.post("/auth/register")

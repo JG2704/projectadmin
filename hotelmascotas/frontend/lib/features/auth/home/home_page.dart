@@ -8,8 +8,9 @@ import '../history/create_reservation_page.dart';
 
 class HomePage extends StatefulWidget {
   final String userName;
+  final int userId; // <-- Agregamos este campo
 
-  const HomePage({super.key, required this.userName});
+  const HomePage({super.key, required this.userName, required this.userId});
 
   @override
   State<HomePage> createState() => _HomePageState();
@@ -85,26 +86,29 @@ class _HomePageState extends State<HomePage> {
 
   Future<void> _refreshDashboard() async {
     setState(() => _isLoading = true);
-
-    try {
+    
+try {
       final dio = Dio();
-
-      final userRes = await dio.get('http://10.0.2.2:8000/users/me');
-      final historyRes = await dio.get('http://10.0.2.2:8000/reservations/history');
-      final petsRes = await dio.get('http://10.0.2.2:8000/pets');
+      // Usamos el userId que viene del widget
+      final options = Options(headers: {'X-User-Id': widget.userId});
+      
+      final userRes = await dio.get('http://10.0.2.2:8000/users/me', options: options);
+      final historyRes = await dio.get('http://10.0.2.2:8000/reservations/history', options: options);
 
       if (mounted) {
         setState(() {
           _currentName = userRes.data['nombre'] ?? widget.userName;
+          
+          // 🔥 AQUÍ USAMOS historyRes (esto quita el error de variable no usada)
           _activeReservations = (historyRes.data as List)
               .where((r) => r["status"] == "Activa")
               .toList();
-          _pets = petsRes.data as List<dynamic>;
+              
           _isLoading = false;
         });
       }
     } catch (e) {
-      debugPrint("Error cargando dashboard: $e");
+      debugPrint("Error: $e");
       if (mounted) setState(() => _isLoading = false);
     }
   }
