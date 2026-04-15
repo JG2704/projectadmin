@@ -114,13 +114,26 @@ class _ProfilePageState extends State<ProfilePage> {
 
             // Opciones
             _buildOption(
-              context,
-              icon: Icons.person,
-              title: "Información Personal",
-              subtitle: "Editar perfil y datos",
+              context, 
+              icon: Icons.person, 
+              title: "Información Personal", 
+              subtitle: "Editar tus datos básicos", 
               onTap: () {
-                Navigator.push(context,
-                    MaterialPageRoute(builder: (_) => const EditProfilePage()));
+                // 1. Verificamos que los datos no sean nulos
+                if (_userData != null && _userData!['id'] != null) {
+                  Navigator.push(
+                    context, 
+                    MaterialPageRoute(
+                      builder: (_) => EditProfilePage(
+                        userId: _userData!['id'], // 2. Pasamos el ID extraído de la BD
+                      ),
+                    ),
+                  ).then((_) => _fetchUserProfile()); // 3. Refresca al volver
+                } else {
+                  ScaffoldMessenger.of(context).showSnackBar(
+                    const SnackBar(content: Text("Espera a que carguen los datos...")),
+                  );
+                }
               },
             ),
 

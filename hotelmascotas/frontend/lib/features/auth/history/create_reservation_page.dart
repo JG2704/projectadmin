@@ -13,12 +13,10 @@ class CreateReservationPage extends StatefulWidget {
 }
 
 class _CreateReservationPageState extends State<CreateReservationPage> {
-  // Pet list from backend
   List<dynamic> _myPets = [];
   String? _selectedPetName;
   bool _isLoadingPets = true;
 
-  // Room list from backend (only disponible rooms)
   List<String> _availableRooms = [];
   String? _selectedRoom;
   bool _isLoadingRooms = true;

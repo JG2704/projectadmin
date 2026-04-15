@@ -113,7 +113,6 @@ class _ReservationDetailPageState extends State<ReservationDetailPage> {
       ),
       child: Row(
         children: [
-          // FIX: was a plain Icon — now a tappable back button
           GestureDetector(
             onTap: () => Navigator.pop(context),
             child: const Icon(Icons.arrow_back, color: Colors.white),

@@ -94,7 +94,7 @@ class _PaymentMethodsPageState extends State<PaymentMethodsPage> {
                     ),
               ),
               
-              // 🔥 LA LÓGICA: Solo permitimos agregar si la lista está vacía (o tiene 0 tarjetas)
+              // Solo mostramos el botón si no hay tarjetas vinculadas
               if (_cards.isEmpty) 
                 Padding(
                   padding: const EdgeInsets.all(20),

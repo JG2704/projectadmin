@@ -30,8 +30,6 @@ class _LoginPageState extends State<LoginPage> {
 
     try {
       final dio = Dio();
-      // Android emulator reaches host machine at 10.0.2.2
-      // For a real device on the same Wi-Fi, replace with your machine's LAN IP.
       final response = await dio.post(
         'http://10.0.2.2:8000/auth/login',
         data: {'email': email, 'password': password},
@@ -40,9 +38,6 @@ class _LoginPageState extends State<LoginPage> {
       if (response.statusCode == 200) {
         final token = response.data['token'] as String; // "token_user_X"
         final userType = response.data['id_tipo_usuario'] as int;
-
-        // FIX: robust parsing — find the last segment that is a valid integer
-        // so the code won't crash if the token format ever changes.
         final parts = token.split('_');
         final userId = int.tryParse(parts.last);
         if (userId == null) {

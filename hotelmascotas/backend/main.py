@@ -37,9 +37,11 @@ class LoginRequest(BaseModel):
 
 
 class UsuarioRegister(BaseModel):
+    cedula: str
     nombre: str
     email: str
     telefono: str
+    direccion: str
     password: str
 
 
@@ -228,8 +230,6 @@ def map_reservation_row(row: sqlite3.Row) -> Dict[str, Any]:
     out_dt = datetime.fromisoformat(check_out)
 
     room = f"Habitación {row['numero']}"
-    # FIX: original code compared against "estandar" but seed stores "estándar" (with accent).
-    # Normalize by checking for the prefix without accents.
     tipo_raw = (row["tipo_hospedaje"] or "estandar").lower()
     hospedaje = "Estándar" if tipo_raw.startswith("est") else "especial"
 
@@ -307,34 +307,24 @@ def login(datos: LoginRequest):
 @app.post("/auth/register")
 def register(datos: UsuarioRegister):
     with get_conn() as conn:
-        exists = conn.execute(
-            "SELECT 1 FROM usuario WHERE email=?", (datos.email,)
-        ).fetchone()
-        if exists:
-            raise HTTPException(status_code=400, detail="El correo ya está registrado")
-
-        cedula = f"TMP-{int(datetime.utcnow().timestamp())}"
-        fecha = datetime.utcnow().strftime("%Y-%m-%d")
-        conn.execute(
-            """
-            INSERT INTO usuario
-                (cedula, nombre, email, telefono, direccion, clave_hash,
-                 fecha_registro, activo, id_tipo_pago, id_tipo_usuario)
-            VALUES (?, ?, ?, ?, ?, ?, ?, 1, 1, 1)
-            """,
-            (
-                cedula,
-                datos.nombre,
-                datos.email,
-                datos.telefono,
-                "No especificada",
-                hash_password(datos.password),
-                fecha,
-            ),
-        )
-        conn.commit()
-
-    return {"success": True, "message": "Usuario creado exitosamente"}
+        try:
+            fecha_actual = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+            # Hasheo simulado (o real si están usando bcrypt)
+            hash_pw = hash_password(datos.password) 
+            
+            # Asignamos ID de tipo pago (1 = Efectivo) y tipo usuario (1 = Cliente) por defecto
+            conn.execute(
+                """
+                INSERT INTO usuario (cedula, nombre, email, telefono, direccion, clave_hash, fecha_registro, id_tipo_pago, id_tipo_usuario)
+                VALUES (?, ?, ?, ?, ?, ?, ?, 1, 1)
+                """,
+                (datos.cedula, datos.nombre, datos.email, datos.telefono, datos.direccion, hash_pw, fecha_actual)
+            )
+            conn.commit()
+            return {"success": True, "message": "Usuario creado"}
+        except sqlite3.IntegrityError:
+            # Esto atrapa si alguien intenta registrar una cédula o correo que ya existe
+            raise HTTPException(status_code=400, detail="La cédula o el correo ya están registrados en el sistema.")
 
 
 # ── User endpoints ────────────────────────────────────────────────────────────
@@ -391,24 +381,27 @@ def get_perfil(
     return perfil
 
 
+class ProfileUpdate(BaseModel):
+    nombre: str
+    cedula: str
+    email: str
+    telefono: str
+    direccion: str
+
 @app.put("/users/me")
-def update_perfil(
-    datos: UsuarioUpdate,
-    x_user_id: Optional[int] = Header(default=None, alias="X-User-Id"),
-):
+def update_profile(datos: ProfileUpdate, x_user_id: Optional[int] = Header(default=None, alias="X-User-Id")):
     user_id = resolve_current_user_id(x_user_id)
     with get_conn() as conn:
         conn.execute(
-            "UPDATE usuario SET nombre=?, email=?, telefono=? WHERE id=?",
-            (datos.nombre, datos.email, datos.telefono, user_id),
+            """
+            UPDATE usuario 
+            SET nombre=?, cedula=?, email=?, telefono=?, direccion=? 
+            WHERE id=?
+            """,
+            (datos.nombre, datos.cedula, datos.email, datos.telefono, datos.direccion, user_id)
         )
         conn.commit()
-        user = conn.execute(
-            "SELECT id, cedula, nombre, email, telefono, direccion, id_tipo_pago, id_tipo_usuario FROM usuario WHERE id=?",
-            (user_id,),
-        ).fetchone()
-
-    return {"success": True, "data": dict(user)}
+    return {"success": True, "message": "Perfil actualizado"}
 
 
 # ── Pet endpoints ─────────────────────────────────────────────────────────────
@@ -572,9 +565,8 @@ def create_reserva(
     salida = datetime.fromisoformat(r.fecha_salida.replace("Z", "+00:00")).date()
     dias = max((salida - ingreso).days, 1)
 
-    # Strip "Habitación " prefix if present
     room_number = r.room.replace("Habitación", "").strip()
-    # Map Flutter display value → DB value
+
     tipo_hospedaje_db = "estandar" if r.type.lower().startswith("est") else "especial"
     precio_base = 50.0 if tipo_hospedaje_db == "estandar" else 85.0
     total = float(dias * precio_base)
