@@ -59,10 +59,15 @@ INSERT INTO usuario (id, cedula, nombre, email, telefono, direccion, clave_hash,
 (2, '1-1111-1111', 'Gabriel Marín', 'gabmar@hotel.com', '7000-1111', 'San Jose, Costa Rica', 'admin123', '2026-04-06', 1, 2, 2),
 (3, '2-2222-2222', 'Carlos Mendez', 'carlos@gmail.com', '7111-2222', 'Cartago, Costa Rica', '123456', '2026-04-07', 1, 2, 1);
 
-INSERT INTO mascota (id, nombre, foto, edad, sexo, peso, altura, microchip, fecha_nacimiento, notas, id_usuario, id_tipo_mascota, id_veterinario) VALUES
-(1, 'Max', '', 3, 0, 32.5, 55.0, 'MC-0001', '2023-05-10', 'Le gusta jugar con pelotas.', 1, 1, 1),
-(2, 'Mia', '', 2, 1, 4.8, 28.0, 'MC-0002', '2024-01-20', 'Muy tranquila y sociable.', 3, 2, 2),
-(3, 'Copito', '', 1, 0, 1.4, 18.0, '', '2025-02-11', 'Necesita espacio tranquilo.', 3, 3, 2);
+INSERT INTO mascota (
+    id, nombre, foto, edad, sexo, tamaño, vacunacion, condicion, contrato, cuidados_especiales,
+    id_usuario, id_tipo_mascota, id_veterinario
+) VALUES
+(1, 'Max', '', 3, 0, 55.0, 'Completa', 'Saludable', 'Adopción', 'Ninguno', 1, 1, 1),
+
+(2, 'Mia', '', 2, 1, 28.0, 'Parcial', 'En tratamiento', 'Temporal', 'Requiere medicación diaria', 3, 2, 2),
+
+(3, 'Copito', '', 1, 0, 18.0, 'Pendiente', 'Delicado', 'Adopción', 'Ambiente tranquilo', 3, 3, 2);
 
 INSERT INTO mascota_x_necesidad (id, descripcion, id_mascota, id_necesidad) VALUES
 (1, 'Vacunas al dia', 1, 1),
