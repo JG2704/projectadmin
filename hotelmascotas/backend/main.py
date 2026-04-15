@@ -597,6 +597,28 @@ def create_reserva(
         ).fetchone()
         if not tipo_hosp:
             raise HTTPException(status_code=500, detail=f"tipo_hospedaje '{tipo_hospedaje_db}' no encontrado en BD")
+        
+        conflict = conn.execute(
+            """
+            SELECT 1
+            FROM reserva r
+            JOIN estado_reserva er ON er.id = r.id_estado
+            WHERE r.id_habitacion = ?
+            AND er.estado = 'activa'
+            AND NOT (
+                r.fecha_salida <= ? OR
+                r.fecha_ingreso >= ?
+            )
+            LIMIT 1
+            """,
+            (habitacion["id"], ingreso.isoformat(), salida.isoformat())
+        ).fetchone()
+
+        if conflict:
+            raise HTTPException(
+                status_code=409,
+                detail="La habitación ya está reservada en esas fechas"
+            )
 
         cur = conn.execute(
             """
@@ -616,10 +638,10 @@ def create_reserva(
                 tipo_hosp["id"],
             ),
         )
-        conn.execute(
-            "UPDATE habitacion SET estado='ocupado' WHERE id=?",
-            (habitacion["id"],),
-        )
+        # conn.execute(
+        #     "UPDATE habitacion SET estado='ocupado' WHERE id=?",
+        #     (habitacion["id"],),
+        # )
         reserva_id = cur.lastrowid
         conn.commit()
 
