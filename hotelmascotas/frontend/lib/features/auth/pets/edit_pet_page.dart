@@ -1,7 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:dio/dio.dart';
 import '../../../models/pet_model.dart';
-import '../../../services/auth_service.dart';
 
 class EditPetPage extends StatefulWidget {
   final Pet pet;
@@ -14,42 +13,33 @@ class EditPetPage extends StatefulWidget {
 
 class _EditPetPageState extends State<EditPetPage> {
   late TextEditingController nameController;
-  late TextEditingController typeController;
-  late TextEditingController breedController;
   late TextEditingController ageController;
+  late TextEditingController sizeController;
+  late TextEditingController vacunacionController;
+  late TextEditingController condicionController;
+  late TextEditingController contratoController;
+  late TextEditingController cuidadosController;
 
-  late TextEditingController genderController;
-  late TextEditingController weightController;
-  late TextEditingController birthDateController;
-  late TextEditingController vaccinesController;
-  late TextEditingController allergiesController;
-  late TextEditingController dietController;
-  late TextEditingController notesController;
+  int? sexo;
 
-  // Estado para la bolita de carga
   bool _isLoading = false;
 
   @override
   void initState() {
     super.initState();
 
-    // INICIALIZAR CON DATOS ACTUALES
     nameController = TextEditingController(text: widget.pet.name);
-    typeController = TextEditingController(text: widget.pet.type);
-    breedController = TextEditingController(text: widget.pet.breed);
     ageController = TextEditingController(text: widget.pet.age);
 
-    // Estos campos podrían venir vacíos
-    genderController = TextEditingController(text: widget.pet.gender ?? '');
-    weightController = TextEditingController(text: widget.pet.weight ?? '');
-    birthDateController = TextEditingController(text: widget.pet.birthDate ?? '');
-    vaccinesController = TextEditingController(text: widget.pet.vaccines ?? '');
-    allergiesController = TextEditingController(text: widget.pet.allergies ?? '');
-    dietController = TextEditingController(text: widget.pet.diet ?? '');
-    notesController = TextEditingController(text: widget.pet.notes ?? '');
+    sizeController = TextEditingController(text: widget.pet.size ?? '');
+    vacunacionController = TextEditingController(text: widget.pet.vaccines ?? '');
+    condicionController = TextEditingController(text: widget.pet.condition ?? '');
+    contratoController = TextEditingController(text: widget.pet.contract ?? '');
+    cuidadosController = TextEditingController(text: widget.pet.specialCare ?? '');
+
+    sexo = widget.pet.genderInt; // 0 o 1
   }
 
-// MÉTODO PARA ENVIAR CAMBIOS AL BACKEND
   Future<void> _updatePetInBackend() async {
     if (nameController.text.trim().isEmpty) {
       ScaffoldMessenger.of(context).showSnackBar(
@@ -63,55 +53,52 @@ class _EditPetPageState extends State<EditPetPage> {
     });
 
     try {
-      final dio = await AuthService.getDioWithAuth();
-      final petId = widget.pet.id; 
-      
-      if (petId == null) throw Exception("ID de mascota no válido");
+      final dio = Dio();
+      final petId = widget.pet.id;
 
-      // Agregamos todos los campos al JSON que viaja a Python
+      if (petId == null) throw Exception("ID inválido");
+
       final response = await dio.put(
-        '/pets/$petId',
+        'http://10.0.2.2:8000/pets/$petId',
         data: {
           "nombre": nameController.text.trim(),
-          "especie": typeController.text.trim(),
-          "raza": breedController.text.trim(),
           "edad": int.tryParse(ageController.text.trim()) ?? 0,
-          "sexo": genderController.text.trim(),
-          "peso": weightController.text.trim(),
-          "fecha_nacimiento": birthDateController.text.trim(), 
-          "vacunas": vaccinesController.text.trim(),           
-          "alergias": allergiesController.text.trim(),         
-          "dieta": dietController.text.trim(),                 
-          "notas": notesController.text.trim()
+          "sexo": sexo,
+          "tamaño": double.tryParse(sizeController.text.trim()),
+          "vacunacion": vacunacionController.text.trim(),
+          "condicion": condicionController.text.trim(),
+          "contrato": contratoController.text.trim(),
+          "cuidados_especiales": cuidadosController.text.trim(),
+          "id_tipo_mascota": 1,
+          "id_veterinario": null
         },
       );
 
       if (response.statusCode == 200) {
-        // Actualizamos los campos en la memoria de la pantalla
+        // Actualizar objeto local
         widget.pet.name = nameController.text.trim();
-        widget.pet.type = typeController.text.trim();
-        widget.pet.breed = breedController.text.trim();
         widget.pet.age = ageController.text.trim();
-        
-        widget.pet.gender = genderController.text.trim();
-        widget.pet.weight = weightController.text.trim();
-        widget.pet.birthDate = birthDateController.text.trim(); 
-        widget.pet.vaccines = vaccinesController.text.trim();   
-        widget.pet.allergies = allergiesController.text.trim(); 
-        widget.pet.diet = dietController.text.trim();           
-        widget.pet.notes = notesController.text.trim();
+        widget.pet.size = sizeController.text.trim();
+        widget.pet.vaccines = vacunacionController.text.trim();
+        widget.pet.condition = condicionController.text.trim();
+        widget.pet.contract = contratoController.text.trim();
+        widget.pet.specialCare = cuidadosController.text.trim();
+        widget.pet.genderInt = sexo;
 
         if (!mounted) return;
+
         ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(content: Text("¡Cambios guardados exitosamente!")),
+          const SnackBar(content: Text("¡Cambios guardados!")),
         );
-        Navigator.pop(context, true); 
+
+        Navigator.pop(context, true);
       }
     } on DioException catch (e) {
-      debugPrint("Error al actualizar: ${e.message}");
+      debugPrint("Error: ${e.message}");
       if (!mounted) return;
+
       ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text("Error al conectar con el servidor")),
+        const SnackBar(content: Text("Error al actualizar")),
       );
     } finally {
       if (mounted) {
@@ -135,41 +122,55 @@ class _EditPetPageState extends State<EditPetPage> {
         padding: const EdgeInsets.all(15),
         child: Column(
           children: [
-            _sectionCard("Información Principal", [
+            _sectionCard("Información General", [
               _input("Nombre", nameController),
-              _input("Especie", typeController),
-              _input("Raza", breedController),
-              _input("Edad (Años)", ageController, keyboardType: TextInputType.number),
+              _input("Edad", ageController, keyboardType: TextInputType.number),
+              _input("Tamaño (cm)", sizeController, keyboardType: TextInputType.number),
+
               Row(
                 children: [
-                  Expanded(child: _input("Sexo", genderController)),
+                  const Text("Sexo: "),
                   const SizedBox(width: 10),
-                  Expanded(child: _input("Peso", weightController)),
+                  DropdownButton<int>(
+                    value: sexo,
+                    hint: const Text("Seleccionar"),
+                    items: const [
+                      DropdownMenuItem(value: 0, child: Text("Macho")),
+                      DropdownMenuItem(value: 1, child: Text("Hembra")),
+                    ],
+                    onChanged: (value) {
+                      setState(() {
+                        sexo = value;
+                      });
+                    },
+                  )
                 ],
-              )
+              ),
             ]),
-            _sectionCard("Historial Médico", [
-              _input("Fecha de Nacimiento", birthDateController),
-              _input("Vacunas al día", vaccinesController, maxLines: 2),
-              _input("Alergias o condiciones", allergiesController, maxLines: 2),
+
+            _sectionCard("Información Médica", [
+              _input("Vacunación", vacunacionController, maxLines: 2),
+              _input("Condición", condicionController, maxLines: 2),
             ]),
-            _sectionCard("Preferencias", [
-              _input("Dieta / Alimentación", dietController, maxLines: 2),
-              _input("Notas de comportamiento", notesController, maxLines: 3),
+
+            _sectionCard("Otros", [
+              _input("Contrato", contratoController),
+              _input("Cuidados especiales", cuidadosController, maxLines: 2),
             ]),
+
             const SizedBox(height: 20),
-            
-            // BOTÓN CON ESTADO DE CARGA
+
             SizedBox(
               width: double.infinity,
               height: 50,
               child: ElevatedButton(
                 style: ElevatedButton.styleFrom(
                   backgroundColor: Colors.purple,
-                  shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
+                  shape: RoundedRectangleBorder(
+                      borderRadius: BorderRadius.circular(10)),
                 ),
                 onPressed: _isLoading ? null : _updatePetInBackend,
-                child: _isLoading 
+                child: _isLoading
                     ? const CircularProgressIndicator(color: Colors.white)
                     : const Text("Guardar Cambios"),
               ),
@@ -191,7 +192,9 @@ class _EditPetPageState extends State<EditPetPage> {
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          Text(title, style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 16)),
+          Text(title,
+              style:
+                  const TextStyle(fontWeight: FontWeight.bold, fontSize: 16)),
           const SizedBox(height: 10),
           ...children
         ],
@@ -199,8 +202,8 @@ class _EditPetPageState extends State<EditPetPage> {
     );
   }
 
-  // Modificado para aceptar el tipo de teclado 
-  Widget _input(String label, TextEditingController controller, {int maxLines = 1, TextInputType? keyboardType}) {
+  Widget _input(String label, TextEditingController controller,
+      {int maxLines = 1, TextInputType? keyboardType}) {
     return Padding(
       padding: const EdgeInsets.only(bottom: 10),
       child: TextField(
