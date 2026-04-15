@@ -119,7 +119,6 @@ class _HomePageState extends State<HomePage> {
       if (mounted) setState(() => _isLoading = false);
     }
   }
-  }
 
   @override
   Widget build(BuildContext context) {
@@ -160,8 +159,6 @@ class _HomePageState extends State<HomePage> {
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
               _buildHeader(),
-              const SizedBox(height: 16),
-              _buildSearchBar(),
               const SizedBox(height: 16),
               _buildStatsRow(),
               const SizedBox(height: 20),
@@ -212,29 +209,6 @@ class _HomePageState extends State<HomePage> {
     );
   }
 
-  Widget _buildSearchBar() {
-    return Padding(
-      padding: const EdgeInsets.symmetric(horizontal: 20),
-      child: Container(
-        height: 45,
-        padding: const EdgeInsets.symmetric(horizontal: 16),
-        decoration: BoxDecoration(
-          color: Colors.white,
-          borderRadius: BorderRadius.circular(12),
-          boxShadow: [
-            BoxShadow(color: Colors.black.withOpacity(0.05), blurRadius: 8),
-          ],
-        ),
-        child: const Row(
-          children: [
-            Icon(Icons.search, color: Colors.grey),
-            SizedBox(width: 10),
-            Text("Buscar...", style: TextStyle(color: Colors.grey)),
-          ],
-        ),
-      ),
-    );
-  }
 
   Widget _buildStatsRow() {
     return Padding(

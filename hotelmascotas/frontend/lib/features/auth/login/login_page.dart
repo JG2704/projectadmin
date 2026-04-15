@@ -12,16 +12,14 @@ class LoginPage extends StatefulWidget {
 }
 
 class _LoginPageState extends State<LoginPage> {
-  // Controladores
   final TextEditingController _emailController = TextEditingController();
   final TextEditingController _passwordController = TextEditingController();
-
   bool _isLoading = false;
+  bool _obscurePassword = true;
 
-  // Método login - AHORA LLAMA A LA API REAL
   Future<void> _login() async {
-    String email = _emailController.text.trim();
-    String password = _passwordController.text.trim();
+    final email = _emailController.text.trim();
+    final password = _passwordController.text.trim();
 
     if (email.isEmpty || password.isEmpty) {
       _showMessage("Por favor completa todos los campos");
@@ -32,68 +30,58 @@ class _LoginPageState extends State<LoginPage> {
 
     try {
       final dio = Dio();
-      
-      // Llamada real a la API del backend
+      // Android emulator reaches host machine at 10.0.2.2
+      // For a real device on the same Wi-Fi, replace with your machine's LAN IP.
       final response = await dio.post(
         'http://10.0.2.2:8000/auth/login',
-        data: {
-          'email': email,
-          'password': password,
-        },
+        data: {'email': email, 'password': password},
       );
 
       if (response.statusCode == 200) {
-        // Extraer datos de la respuesta
-        final token = response.data['token']; // Ej: "token_user_1"
-        final userType = response.data['id_tipo_usuario']; // 1 = cliente, 2 = admin
+        final token = response.data['token'] as String; // "token_user_X"
+        final userType = response.data['id_tipo_usuario'] as int;
 
-        // Extraer el user ID del token (formato: "token_user_X")
-        final userId = int.parse(token.split('_').last);
-        
-        // Guardar user ID y token en almacenamiento local
+        // FIX: robust parsing — find the last segment that is a valid integer
+        // so the code won't crash if the token format ever changes.
+        final parts = token.split('_');
+        final userId = int.tryParse(parts.last);
+        if (userId == null) {
+          _showMessage("Respuesta del servidor inesperada");
+          return;
+        }
+
         await AuthService.saveUserId(userId);
         await AuthService.saveToken(token);
 
-        // Obtener nombre del usuario de la respuesta o usar email
         final userName = email.split('@').first;
 
-        if (mounted) {
-          // Navegar a HomePage con los datos del usuario
-          Navigator.pushReplacement(
-            context,
-            MaterialPageRoute(
-              builder: (context) => HomePage(userName: userName),
-            ),
-          );
-        }
+        if (!mounted) return;
+        Navigator.pushReplacement(
+          context,
+          MaterialPageRoute(
+            builder: (_) => HomePage(userName: userName),
+          ),
+        );
       }
     } on DioException catch (e) {
       String errorMsg = "Error de conexión";
-      
       if (e.response != null) {
-        // Error del servidor (401, 400, etc.)
         if (e.response?.statusCode == 401) {
           errorMsg = "Credenciales incorrectas";
         } else {
           errorMsg = e.response?.data['detail'] ?? "Error en el servidor";
         }
-      } else if (e.type == DioExceptionType.connectionTimeout) {
-        errorMsg = "Conexión expirada. ¿Backend está encendido?";
+      } else if (e.type == DioExceptionType.connectionTimeout ||
+          e.type == DioExceptionType.connectionError) {
+        errorMsg = "No se pudo conectar. ¿El servidor está encendido?";
       } else if (e.type == DioExceptionType.receiveTimeout) {
-        errorMsg = "Servidor tardó demasiado en responder";
+        errorMsg = "El servidor tardó demasiado en responder";
       }
-      
-      if (mounted) {
-        _showMessage(errorMsg);
-      }
+      if (mounted) _showMessage(errorMsg);
     } catch (e) {
-      if (mounted) {
-        _showMessage("Error inesperado: $e");
-      }
+      if (mounted) _showMessage("Error inesperado: $e");
     } finally {
-      if (mounted) {
-        setState(() => _isLoading = false);
-      }
+      if (mounted) setState(() => _isLoading = false);
     }
   }
 
@@ -113,162 +101,167 @@ class _LoginPageState extends State<LoginPage> {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      body: Container(
-        width: double.infinity,
-        decoration: const BoxDecoration(
-          gradient: LinearGradient(
-            colors: [
-              Color(0xFF7B1FA2),
-              Color(0xFF9C27B0),
-            ],
-            begin: Alignment.topCenter,
-            end: Alignment.bottomCenter,
+      body: SafeArea(
+        child: Container(
+          width: double.infinity,
+          decoration: const BoxDecoration(
+            gradient: LinearGradient(
+              colors: [Color(0xFF7B1FA2), Color(0xFF9C27B0)],
+              begin: Alignment.topCenter,
+              end: Alignment.bottomCenter,
+            ),
           ),
-        ),
-        child: Column(
-          children: [
-            const SizedBox(height: 80),
-
-            // Logo
-            const CircleAvatar(
-              radius: 50,
-              backgroundColor: Colors.white,
-              child: Icon(Icons.pets, size: 40, color: Colors.purple),
-            ),
-
-            const SizedBox(height: 20),
-
-            const Text(
-              "PetLodge",
-              style: TextStyle(
-                fontSize: 28,
-                color: Colors.white,
-                fontWeight: FontWeight.bold,
+          child: Column(
+            children: [
+              const SizedBox(height: 80),
+              const CircleAvatar(
+                radius: 50,
+                backgroundColor: Colors.white,
+                child: Icon(Icons.pets, size: 40, color: Colors.purple),
               ),
-            ),
-
-            const Text(
-              "Hotel de Mascotas",
-              style: TextStyle(color: Colors.white70),
-            ),
-
-            const SizedBox(height: 40),
-
-            // Card blanca
-            Expanded(
-              child: Container(
-                padding: const EdgeInsets.all(20),
-                decoration: const BoxDecoration(
+              const SizedBox(height: 20),
+              const Text(
+                "PetLodge",
+                style: TextStyle(
+                  fontSize: 28,
                   color: Colors.white,
-                  borderRadius: BorderRadius.vertical(
-                    top: Radius.circular(30),
-                  ),
+                  fontWeight: FontWeight.bold,
                 ),
-                child: Column(
-                  children: [
-                    const Text(
-                      "Bienvenido",
-                      style: TextStyle(
-                        fontSize: 22,
-                        fontWeight: FontWeight.bold,
-                      ),
-                    ),
+              ),
+              const Text(
+                "Hotel de Mascotas",
+                style: TextStyle(color: Colors.white70),
+              ),
+              const SizedBox(height: 40),
 
-                    const SizedBox(height: 10),
-
-                    const Text("Inicia sesión para continuar"),
-
-                    const SizedBox(height: 20),
-
-                    // EMAIL
-                    TextField(
-                      controller: _emailController,
-                      decoration: InputDecoration(
-                        hintText: "Email",
-                        prefixIcon: const Icon(Icons.email),
-                        filled: true,
-                        fillColor: Colors.grey[200],
-                        border: OutlineInputBorder(
-                          borderRadius: BorderRadius.circular(10),
-                          borderSide: BorderSide.none,
-                        ),
-                      ),
-                    ),
-
-                    const SizedBox(height: 15),
-
-                    // PASSWORD
-                    TextField(
-                      controller: _passwordController,
-                      obscureText: true,
-                      decoration: InputDecoration(
-                        hintText: "Contraseña",
-                        prefixIcon: const Icon(Icons.lock),
-                        filled: true,
-                        fillColor: Colors.grey[200],
-                        border: OutlineInputBorder(
-                          borderRadius: BorderRadius.circular(10),
-                          borderSide: BorderSide.none,
-                        ),
-                      ),
-                    ),
-
-                    const SizedBox(height: 20),
-
-                    // BOTÓN LOGIN
-                    SizedBox(
-                      width: double.infinity,
-                      height: 50,
-                      child: ElevatedButton(
-                        style: ElevatedButton.styleFrom(
-                          backgroundColor: Colors.purple,
-                          shape: RoundedRectangleBorder(
-                            borderRadius: BorderRadius.circular(10),
-                          ),
-                        ),
-                        onPressed: _isLoading ? null : _login,
-                        child: _isLoading
-                            ? const SizedBox(
-                                height: 20,
-                                width: 20,
-                                child: CircularProgressIndicator(
-                                  strokeWidth: 2,
-                                  valueColor: AlwaysStoppedAnimation<Color>(Colors.white),
-                                ),
-                              )
-                            : const Text("Iniciar Sesión"),
-                      ),
-                    ),
-
-                    const SizedBox(height: 15),
-
-                    // NAVEGACIÓN A REGISTER
-                    Row(
-                      mainAxisAlignment: MainAxisAlignment.center,
+              // White card
+              Expanded(
+                child: Container(
+                  padding: const EdgeInsets.all(24),
+                  decoration: const BoxDecoration(
+                    color: Colors.white,
+                    borderRadius: BorderRadius.vertical(top: Radius.circular(30)),
+                  ),
+                  child: SingleChildScrollView(
+                    keyboardDismissBehavior:
+                        ScrollViewKeyboardDismissBehavior.onDrag,
+                    child: Column(
                       children: [
-                        const Text("¿No tienes cuenta? "),
-                        GestureDetector(
-                          onTap: () {
-                            Navigator.push(
-                              context,
-                              MaterialPageRoute(
-                                builder: (context) =>
-                                    const RegisterPage(),
-                              ),
-                            );
-                          },
-                          child: const Text(
-                            "Regístrate",
-                            style: TextStyle(color: Colors.purple),
+                        const Text(
+                          "Bienvenido",
+                          style: TextStyle(fontSize: 22, fontWeight: FontWeight.bold),
+                        ),
+                        const SizedBox(height: 6),
+                        const Text("Inicia sesión para continuar"),
+                        const SizedBox(height: 24),
+
+                        // Email field
+                        TextField(
+                          controller: _emailController,
+                          keyboardType: TextInputType.emailAddress,
+                          decoration: InputDecoration(
+                            hintText: "Email",
+                            prefixIcon: const Icon(Icons.email),
+                            filled: true,
+                            fillColor: Colors.grey[200],
+                            border: OutlineInputBorder(
+                              borderRadius: BorderRadius.circular(10),
+                              borderSide: BorderSide.none,
+                            ),
                           ),
+                        ),
+                        const SizedBox(height: 15),
+
+                        // Password field with show/hide toggle
+                        TextField(
+                          controller: _passwordController,
+                          obscureText: _obscurePassword,
+                          decoration: InputDecoration(
+                            hintText: "Contraseña",
+                            prefixIcon: const Icon(Icons.lock),
+                            suffixIcon: IconButton(
+                              icon: Icon(
+                                _obscurePassword
+                                    ? Icons.visibility_off
+                                    : Icons.visibility,
+                              ),
+                              onPressed: () => setState(
+                                () => _obscurePassword = !_obscurePassword,
+                              ),
+                            ),
+                            filled: true,
+                            fillColor: Colors.grey[200],
+                            border: OutlineInputBorder(
+                              borderRadius: BorderRadius.circular(10),
+                              borderSide: BorderSide.none,
+                            ),
+                          ),
+                        ),
+                        const SizedBox(height: 24),
+
+                        // Login button
+                        SizedBox(
+                          width: double.infinity,
+                          height: 50,
+                          child: ElevatedButton(
+                            style: ElevatedButton.styleFrom(
+                              backgroundColor: Colors.purple,
+                              shape: RoundedRectangleBorder(
+                                borderRadius: BorderRadius.circular(10),
+                              ),
+                            ),
+                            onPressed: _isLoading ? null : _login,
+                            child: _isLoading
+                                ? const SizedBox(
+                                    height: 20,
+                                    width: 20,
+                                    child: CircularProgressIndicator(
+                                      strokeWidth: 2,
+                                      valueColor: AlwaysStoppedAnimation<Color>(
+                                        Colors.white,
+                                      ),
+                                    ),
+                                  )
+                                : const Text(
+                                    "Iniciar Sesión",
+                                    style: TextStyle(
+                                      color: Colors.white,
+                                      fontSize: 16,
+                                    ),
+                                  ),
+                          ),
+                        ),
+                        const SizedBox(height: 15),
+
+                        // Register link
+                        Row(
+                          mainAxisAlignment: MainAxisAlignment.center,
+                          children: [
+                            const Text("¿No tienes cuenta? "),
+                            GestureDetector(
+                              onTap: () => Navigator.push(
+                                context,
+                                MaterialPageRoute(
+                                  builder: (_) => const RegisterPage(),
+                                ),
+                              ),
+                              child: const Text(
+                                "Regístrate",
+                                style: TextStyle(
+                                  color: Colors.purple,
+                                  fontWeight: FontWeight.bold,
+                                ),
+                              ),
+                            ),
+                          ],
                         ),
                       ],
-                    )
-                  ],
+                    ),
+                  ),
                 ),
               ),
-            ),
-          ],
+            ],
+          ),
         ),
       ),
     );

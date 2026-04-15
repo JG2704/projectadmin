@@ -13,26 +13,28 @@ class CreateReservationPage extends StatefulWidget {
 }
 
 class _CreateReservationPageState extends State<CreateReservationPage> {
-
-  // Variables para la lista de mascotas del backend
+  // Pet list from backend
   List<dynamic> _myPets = [];
-  String? _selectedPetName; // Aquí guardaremos la elección del dropdown
+  String? _selectedPetName;
   bool _isLoadingPets = true;
 
-  String selectedRoom = "Habitación 101";
-  String selectedType = "Estándar";
-  DateTimeRange? selectedDates;
+  // Room list from backend (only disponible rooms)
+  List<String> _availableRooms = [];
+  String? _selectedRoom;
+  bool _isLoadingRooms = true;
+
+  String _selectedType = "Estándar";
+  DateTimeRange? _selectedDates;
 
   bool _isLoading = false;
 
   @override
   void initState() {
     super.initState();
-    // Cargamos las mascotas disponibles apenas se abre la pantalla
     _fetchMyPets();
+    _fetchRooms();
   }
 
-  // MÉTODO PARA TRAER LAS MASCOTAS DESDE PYTHON
   Future<void> _fetchMyPets() async {
     try {
       final dio = await AuthService.getDioWithAuth();
@@ -49,32 +51,48 @@ class _CreateReservationPageState extends State<CreateReservationPage> {
     }
   }
 
+  /// Fetch available rooms from the backend and build "Habitación XXX" labels.
+  Future<void> _fetchRooms() async {
+    try {
+      final dio = await AuthService.getDioWithAuth();
+      final response = await dio.get('/rooms');
+      if (response.statusCode == 200) {
+        final rooms = (response.data as List)
+            .where((r) => r['estado'] == 'disponible')
+            .map<String>((r) => 'Habitación ${r['numero']}')
+            .toList();
+        setState(() {
+          _availableRooms = rooms;
+          _selectedRoom = rooms.isNotEmpty ? rooms.first : null;
+          _isLoadingRooms = false;
+        });
+      }
+    } catch (e) {
+      debugPrint("Error cargando habitaciones: $e");
+      setState(() => _isLoadingRooms = false);
+    }
+  }
+
   Future<void> _submitReservation() async {
-    // Validación: Ahora verificamos _selectedPetName en lugar del controlador
-    if (_selectedPetName == null || selectedDates == null) {
-      _showMessage("Por favor, selecciona una mascota y las fechas");
+    if (_selectedPetName == null || _selectedRoom == null || _selectedDates == null) {
+      _showMessage("Por favor, selecciona una mascota, habitación y fechas");
       return;
     }
 
-    setState(() {
-      _isLoading = true;
-    });
+    setState(() => _isLoading = true);
 
     try {
       final dio = await AuthService.getDioWithAuth();
 
       final Map<String, dynamic> reservationData = {
-        "name": _selectedPetName, // Enviamos el nombre seleccionado
-        "room": selectedRoom,
-        "type": selectedType,
-        "fecha_ingreso": selectedDates!.start.toIso8601String(),
-        "fecha_salida": selectedDates!.end.toIso8601String(),
+        "name": _selectedPetName,
+        "room": _selectedRoom,
+        "type": _selectedType,
+        "fecha_ingreso": _selectedDates!.start.toIso8601String(),
+        "fecha_salida": _selectedDates!.end.toIso8601String(),
       };
 
-      final response = await dio.post(
-        '/reservations',
-        data: reservationData,
-      );
+      final response = await dio.post('/reservations', data: reservationData);
 
       if (response.statusCode == 200) {
         final responseData = response.data;
@@ -83,7 +101,7 @@ class _CreateReservationPageState extends State<CreateReservationPage> {
           "type": "reserva",
           "title": "Reserva confirmada",
           "message": "Reserva creada para $_selectedPetName.",
-          "time": "Ahora"
+          "time": "Ahora",
         });
 
         widget.onCreate?.call(responseData);
@@ -93,11 +111,10 @@ class _CreateReservationPageState extends State<CreateReservationPage> {
         Navigator.pop(context);
       }
     } on DioException catch (e) {
-      _showMessage("Error al conectar con el servidor del hotel");
+      final detail = e.response?.data?['detail'] ?? "Error al conectar con el servidor";
+      _showMessage(detail);
     } finally {
-      if (mounted) {
-        setState(() => _isLoading = false);
-      }
+      if (mounted) setState(() => _isLoading = false);
     }
   }
 
@@ -109,6 +126,8 @@ class _CreateReservationPageState extends State<CreateReservationPage> {
 
   @override
   Widget build(BuildContext context) {
+    final bool stillLoading = _isLoadingPets || _isLoadingRooms;
+
     return Scaffold(
       backgroundColor: Colors.grey[100],
       appBar: AppBar(
@@ -116,99 +135,108 @@ class _CreateReservationPageState extends State<CreateReservationPage> {
         backgroundColor: Colors.purple,
         foregroundColor: Colors.white,
       ),
-      body: _isLoadingPets 
-        ? const Center(child: CircularProgressIndicator(color: Colors.purple))
-        : SingleChildScrollView(
-            padding: const EdgeInsets.all(15),
-            child: Column(
-              children: [
-                // DROPDOWN DE MASCOTAS (Reemplaza al TextField)
-                _card(
-                  child: DropdownButtonHideUnderline(
-                    child: DropdownButtonFormField<String>(
-                      value: _selectedPetName,
-                      hint: const Text("Selecciona tu mascota"),
-                      decoration: const InputDecoration(
-                        prefixIcon: Icon(Icons.pets, color: Colors.purple),
-                        border: InputBorder.none,
-                      ),
-                      // Generamos los items dinámicamente desde la lista _myPets
-                      items: _myPets.map((pet) {
-                        return DropdownMenuItem<String>(
-                          value: pet['nombre'],
-                          child: Text(pet['nombre']),
-                        );
-                      }).toList(),
-                      onChanged: (value) {
-                        setState(() => _selectedPetName = value);
-                      },
-                    ),
-                  ),
-                ),
-
-                const SizedBox(height: 15),
-
-                // CARD HABITACIÓN Y TIPO
-                _card(
-                  child: Column(
-                    children: [
-                      _dropDown(
-                        label: "Seleccionar Habitación",
-                        value: selectedRoom,
-                        items: ["Habitación 101", "Habitación 102", "Habitación 103"],
-                        onChanged: (val) => setState(() => selectedRoom = val!),
-                      ),
-                      const Divider(),
-                      _dropDown(
-                        label: "Tipo de Hospedaje",
-                        value: selectedType,
-                        items: ["Estándar", "Premium"],
-                        onChanged: (val) => setState(() => selectedType = val!),
-                      ),
-                    ],
-                  ),
-                ),
-
-                const SizedBox(height: 15),
-
-                // CARD CALENDARIO
-                _card(
-                  child: ListTile(
-                    leading: const Icon(Icons.calendar_today, color: Colors.purple),
-                    title: Text(
-                      selectedDates == null
-                          ? "Seleccionar Fechas"
-                          : "${selectedDates!.start.day}/${selectedDates!.start.month} - ${selectedDates!.end.day}/${selectedDates!.end.month}",
-                    ),
-                    trailing: const Icon(Icons.arrow_forward_ios, size: 16),
-                    onTap: _selectDates,
-                  ),
-                ),
-
-                const SizedBox(height: 30),
-
-                SizedBox(
-                  width: double.infinity,
-                  height: 55,
-                  child: ElevatedButton(
-                    style: ElevatedButton.styleFrom(
-                      backgroundColor: Colors.purple,
-                      shape: RoundedRectangleBorder(
-                        borderRadius: BorderRadius.circular(15),
+      body: stillLoading
+          ? const Center(child: CircularProgressIndicator(color: Colors.purple))
+          : SingleChildScrollView(
+              padding: const EdgeInsets.all(15),
+              child: Column(
+                children: [
+                  // Pet dropdown
+                  _card(
+                    child: DropdownButtonHideUnderline(
+                      child: DropdownButtonFormField<String>(
+                        value: _selectedPetName,
+                        hint: const Text("Selecciona tu mascota"),
+                        decoration: const InputDecoration(
+                          prefixIcon: Icon(Icons.pets, color: Colors.purple),
+                          border: InputBorder.none,
+                        ),
+                        items: _myPets.map((pet) {
+                          return DropdownMenuItem<String>(
+                            value: pet['nombre'] as String,
+                            child: Text(pet['nombre'] as String),
+                          );
+                        }).toList(),
+                        onChanged: (v) => setState(() => _selectedPetName = v),
                       ),
                     ),
-                    onPressed: _isLoading ? null : _submitReservation,
-                    child: _isLoading
-                        ? const CircularProgressIndicator(color: Colors.white)
-                        : const Text(
-                            "Confirmar Reserva",
-                            style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold, color: Colors.white),
-                          ),
                   ),
-                ),
-              ],
+
+                  const SizedBox(height: 15),
+
+                  // Room & type dropdowns
+                  _card(
+                    child: Column(
+                      children: [
+                        _availableRooms.isEmpty
+                            ? const ListTile(
+                                leading: Icon(Icons.hotel, color: Colors.grey),
+                                title: Text("Sin habitaciones disponibles"),
+                              )
+                            : _dropDown(
+                                label: "Seleccionar Habitación",
+                                value: _selectedRoom!,
+                                items: _availableRooms,
+                                onChanged: (v) => setState(() => _selectedRoom = v),
+                              ),
+                        const Divider(),
+                        _dropDown(
+                          label: "Tipo de Hospedaje",
+                          value: _selectedType,
+                          items: const ["Estándar", "Especial"],
+                          onChanged: (v) => setState(() => _selectedType = v!),
+                        ),
+                      ],
+                    ),
+                  ),
+
+                  const SizedBox(height: 15),
+
+                  // Date picker
+                  _card(
+                    child: ListTile(
+                      leading: const Icon(Icons.calendar_today, color: Colors.purple),
+                      title: Text(
+                        _selectedDates == null
+                            ? "Seleccionar Fechas"
+                            : "${_selectedDates!.start.day}/${_selectedDates!.start.month} - "
+                              "${_selectedDates!.end.day}/${_selectedDates!.end.month}",
+                      ),
+                      trailing: const Icon(Icons.arrow_forward_ios, size: 16),
+                      onTap: _selectDates,
+                    ),
+                  ),
+
+                  const SizedBox(height: 30),
+
+                  SizedBox(
+                    width: double.infinity,
+                    height: 55,
+                    child: ElevatedButton(
+                      style: ElevatedButton.styleFrom(
+                        backgroundColor: Colors.purple,
+                        shape: RoundedRectangleBorder(
+                          borderRadius: BorderRadius.circular(15),
+                        ),
+                      ),
+                      onPressed: (_isLoading || _availableRooms.isEmpty)
+                          ? null
+                          : _submitReservation,
+                      child: _isLoading
+                          ? const CircularProgressIndicator(color: Colors.white)
+                          : const Text(
+                              "Confirmar Reserva",
+                              style: TextStyle(
+                                fontSize: 18,
+                                fontWeight: FontWeight.bold,
+                                color: Colors.white,
+                              ),
+                            ),
+                    ),
+                  ),
+                ],
+              ),
             ),
-          ),
     );
   }
 
@@ -223,7 +251,7 @@ class _CreateReservationPageState extends State<CreateReservationPage> {
             color: Colors.black.withOpacity(0.05),
             blurRadius: 10,
             offset: const Offset(0, 5),
-          )
+          ),
         ],
       ),
       child: child,
@@ -240,7 +268,9 @@ class _CreateReservationPageState extends State<CreateReservationPage> {
       child: DropdownButtonFormField<String>(
         value: value,
         decoration: InputDecoration(labelText: label, border: InputBorder.none),
-        items: items.map((e) => DropdownMenuItem(value: e, child: Text(e))).toList(),
+        items: items
+            .map((e) => DropdownMenuItem(value: e, child: Text(e)))
+            .toList(),
         onChanged: onChanged,
       ),
     );
@@ -264,8 +294,6 @@ class _CreateReservationPageState extends State<CreateReservationPage> {
         );
       },
     );
-    if (picked != null) {
-      setState(() => selectedDates = picked);
-    }
+    if (picked != null) setState(() => _selectedDates = picked);
   }
 }
