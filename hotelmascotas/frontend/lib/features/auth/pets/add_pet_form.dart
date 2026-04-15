@@ -1,7 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:dio/dio.dart';
 import '../../../models/pet_model.dart';
-import '../../../services/auth_service.dart';
 
 class AddPetForm extends StatefulWidget {
   const AddPetForm({super.key});
@@ -12,19 +11,22 @@ class AddPetForm extends StatefulWidget {
 
 class _AddPetFormState extends State<AddPetForm> {
   final TextEditingController nameController = TextEditingController();
-  final TextEditingController typeController = TextEditingController();
-  final TextEditingController breedController = TextEditingController();
   final TextEditingController ageController = TextEditingController();
+  final TextEditingController sizeController = TextEditingController();
+  final TextEditingController vacunacionController = TextEditingController();
+  final TextEditingController condicionController = TextEditingController();
+  final TextEditingController contratoController = TextEditingController();
+  final TextEditingController cuidadosController = TextEditingController();
 
-  // Controla el estado de carga al enviar los datos
+  int? sexo; // 0 = macho, 1 = hembra
+
   bool _isLoading = false;
 
-  // Función asíncrona para enviar datos al servidor
   Future<void> _savePetToBackend() async {
-    // 1. Validación básica
-    if (nameController.text.isEmpty || typeController.text.isEmpty) {
+    // VALIDACIÓN
+    if (nameController.text.isEmpty) {
       ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text("Por favor completa al menos Nombre y Tipo")),
+        const SnackBar(content: Text("El nombre es obligatorio")),
       );
       return;
     }
@@ -34,43 +36,52 @@ class _AddPetFormState extends State<AddPetForm> {
     });
 
     try {
-      final dio = await AuthService.getDioWithAuth();
-      
-      // 2. Hacemos el POST a Python
+      final dio = Dio();
+
       final response = await dio.post(
-        '/pets',
+        'http://10.0.2.2:8000/pets',
         data: {
           "nombre": nameController.text.trim(),
-          "especie": typeController.text.trim(),
-          "raza": breedController.text.trim(),
           "edad": int.tryParse(ageController.text.trim()) ?? 0,
-          "sexo": "No especificado", 
-          "peso": "No especificado",
-          "vacunas": "No especificado",
-          "notas": ""
+          "sexo": sexo,
+          "tamaño": double.tryParse(sizeController.text.trim()),
+          "vacunacion": vacunacionController.text.trim().isEmpty
+              ? "No especificado"
+              : vacunacionController.text.trim(),
+          "condicion": condicionController.text.trim().isEmpty
+              ? "Desconocida"
+              : condicionController.text.trim(),
+          "contrato": contratoController.text.trim().isEmpty
+              ? "No definido"
+              : contratoController.text.trim(),
+          "cuidados_especiales": cuidadosController.text.trim().isEmpty
+              ? "Ninguno"
+              : cuidadosController.text.trim(),
+          "id_tipo_mascota": 1, // ⚠️ temporal (puedes hacerlo dinámico luego)
+          "id_veterinario": null
         },
       );
 
-      // 3. Si el servidor lo guardó correctamente
       if (response.statusCode == 200) {
-        // Python nos devuelve la mascota recién creada con su ID real.
-        // Lo usamos para crear el objeto local que pets_page.dart espera
         final savedPet = Pet(
           name: response.data['nombre'],
-          type: response.data['especie'],
-          breed: response.data['raza'],
+          type: "N/A",
+          breed: "N/A",
           age: response.data['edad'].toString(),
         );
 
         if (!mounted) return;
-        // Cerramos el modal y regresamos el objeto a la página principal
         Navigator.pop(context, savedPet);
       }
     } on DioException catch (e) {
-      debugPrint("Error al crear mascota: ${e.message}");
+      debugPrint("Error: ${e.message}");
       if (!mounted) return;
+
       ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text("Error de conexión con el servidor", style: TextStyle(color: Colors.white)), backgroundColor: Colors.red),
+        const SnackBar(
+          content: Text("Error al conectar con el servidor"),
+          backgroundColor: Colors.red,
+        ),
       );
     } finally {
       if (mounted) {
@@ -87,7 +98,6 @@ class _AddPetFormState extends State<AddPetForm> {
       padding: const EdgeInsets.all(20),
       child: SingleChildScrollView(
         child: Column(
-          mainAxisSize: MainAxisSize.min,
           children: [
             // HEADER
             Row(
@@ -108,10 +118,35 @@ class _AddPetFormState extends State<AddPetForm> {
 
             // INPUTS
             _input("Nombre", "Nombre de la mascota", nameController, TextInputType.text),
-            _input("Tipo", "Perro, Gato, Conejo...", typeController, TextInputType.text),
-            _input("Raza", "Opcional", breedController, TextInputType.text),
-            // Le forzamos el teclado numérico a la edad
-            _input("Edad", "Años", ageController, TextInputType.number), 
+            _input("Edad", "Años", ageController, TextInputType.number),
+            _input("Tamaño", "Ej: 45 (cm)", sizeController, TextInputType.number),
+            _input("Vacunación", "Estado de vacunas", vacunacionController, TextInputType.text),
+            _input("Condición", "Estado de salud", condicionController, TextInputType.text),
+            _input("Contrato", "Tipo de contrato", contratoController, TextInputType.text),
+            _input("Cuidados especiales", "Opcional", cuidadosController, TextInputType.text),
+
+            const SizedBox(height: 10),
+
+            // SEXO
+            Row(
+              children: [
+                const Text("Sexo: "),
+                const SizedBox(width: 10),
+                DropdownButton<int>(
+                  value: sexo,
+                  hint: const Text("Seleccionar"),
+                  items: const [
+                    DropdownMenuItem(value: 0, child: Text("Macho")),
+                    DropdownMenuItem(value: 1, child: Text("Hembra")),
+                  ],
+                  onChanged: (value) {
+                    setState(() {
+                      sexo = value;
+                    });
+                  },
+                )
+              ],
+            ),
 
             const SizedBox(height: 20),
 
@@ -130,12 +165,13 @@ class _AddPetFormState extends State<AddPetForm> {
                     style: ElevatedButton.styleFrom(
                       backgroundColor: Colors.purple,
                     ),
-                    // Si está cargando anulamos el botón para evitar doble envío
                     onPressed: _isLoading ? null : _savePetToBackend,
-                    child: _isLoading 
+                    child: _isLoading
                         ? const SizedBox(
-                            width: 20, height: 20, 
-                            child: CircularProgressIndicator(color: Colors.white, strokeWidth: 2)
+                            width: 20,
+                            height: 20,
+                            child: CircularProgressIndicator(
+                                color: Colors.white, strokeWidth: 2),
                           )
                         : const Text("Agregar"),
                   ),
@@ -147,6 +183,7 @@ class _AddPetFormState extends State<AddPetForm> {
       ),
     );
   }
+
   Widget _input(String label, String hint, TextEditingController controller, TextInputType keyboardType) {
     return Padding(
       padding: const EdgeInsets.only(bottom: 15),
