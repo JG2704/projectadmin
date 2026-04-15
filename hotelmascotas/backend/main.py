@@ -47,16 +47,15 @@ class UsuarioRegister(BaseModel):
 
 class MascotaBase(BaseModel):
     nombre: str
-    especie: str
-    raza: str
     edad: int
-    sexo: Optional[str] = "No especificado"
-    peso: Optional[str] = "No especificado"
-    fecha_nacimiento: Optional[str] = "No especificado"
-    vacunas: Optional[str] = "No especificado"
-    alergias: Optional[str] = "Ninguna"
-    dieta: Optional[str] = "Normal"
-    notas: Optional[str] = ""
+    sexo: Optional[int] = None  # 0 = macho, 1 = hembra
+    tamaño: Optional[float] = None
+    vacunacion: Optional[str] = "No especificado"
+    condicion: Optional[str] = "Desconocida"
+    contrato: Optional[str] = "No definido"
+    cuidados_especiales: Optional[str] = "Ninguno"
+    id_tipo_mascota: int
+    id_veterinario: Optional[int] = None
 
 
 class MascotaResponse(MascotaBase):
@@ -130,20 +129,20 @@ def sex_to_label(value: Optional[int]) -> str:
     return "No especificado"
 
 
-def normalize_weight_to_db(peso: Optional[str]) -> Optional[float]:
-    if not peso:
+def normalize_size_to_db(tamano: Optional[str]) -> Optional[float]:
+    if not tamano:
         return None
-    stripped = peso.strip().lower().replace("kg", "")
+    stripped = tamano.strip().lower().replace("cm", "").replace("m", "")
     try:
         return float(stripped)
     except ValueError:
         return None
 
 
-def weight_to_label(value: Optional[float]) -> str:
+def size_to_label(value: Optional[float]) -> str:
     if value is None:
         return "No especificado"
-    return f"{value}kg"
+    return f"{value} cm"
 
 
 def ensure_tipo_mascota(conn: sqlite3.Connection, especie: str, raza: str) -> int:
@@ -190,28 +189,25 @@ def serialize_pet_row(conn: sqlite3.Connection, row: sqlite3.Row) -> Dict[str, A
         (row["id"],),
     ).fetchall()
 
-    needs = {"vacunas": "No especificado", "alergias": "Ninguna", "dieta": "Normal"}
+    needs = {
+        "vacunas": row["vacunacion"] or "No especificado",
+        "cuidados_especiales": row["cuidados_especiales"] if "cuidados_especiales" in row.keys() else "Ninguno"
+    }
+
     for item in needs_rows:
         if item["tipo"] == "vacuna":
             needs["vacunas"] = item["descripcion"]
-        elif item["tipo"] == "alergia":
-            needs["alergias"] = item["descripcion"]
-        elif item["tipo"] == "dieta":
-            needs["dieta"] = item["descripcion"]
 
     return {
         "id": row["id"],
         "nombre": row["nombre"],
-        "especie": (row["especie"] or "Desconocido").title(),
-        "raza": (row["raza"] or "Desconocida").title(),
         "edad": row["edad"] if row["edad"] is not None else 0,
         "sexo": sex_to_label(row["sexo"]),
-        "peso": weight_to_label(row["peso"]),
-        "fecha_nacimiento": row["fecha_nacimiento"] or "No especificado",
-        "vacunas": needs["vacunas"],
-        "alergias": needs["alergias"],
-        "dieta": needs["dieta"],
-        "notas": row["notas"] or "",
+        "tamaño": size_to_label(row["tamaño"]),
+        "vacunacion": needs["vacunas"],
+        "condicion": row["condicion"] or "Desconocida",
+        "contrato": row["contrato"] or "No definido",
+        "cuidados_especiales": row["cuidados_especiales"] if "cuidados_especiales" in row.keys() else "Ninguno",
     }
 
 
@@ -411,63 +407,72 @@ def get_mascotas(
     x_user_id: Optional[int] = Header(default=None, alias="X-User-Id")
 ):
     user_id = resolve_current_user_id(x_user_id)
+
     with get_conn() as conn:
         rows = conn.execute(
             """
-            SELECT m.id, m.nombre, m.edad, m.sexo, m.peso, m.fecha_nacimiento, m.notas,
-                   tm.especie, tm.raza
-            FROM mascota m
-            INNER JOIN tipo_mascota tm ON tm.id = m.id_tipo_mascota
-            WHERE m.id_usuario=?
-            ORDER BY m.id DESC
+            SELECT 
+                id,
+                nombre,
+                edad,
+                sexo,
+                tamaño,
+                vacunacion,
+                condicion,
+                contrato,
+                cuidados_especiales
+            FROM mascota
+            WHERE id_usuario=?
+            ORDER BY id DESC
             """,
             (user_id,),
         ).fetchall()
-        return [serialize_pet_row(conn, row) for row in rows]
 
+        return [serialize_pet_row(conn, row) for row in rows]
 
 @app.post("/pets", response_model=MascotaResponse)
 def create_mascota(
     m: MascotaBase,
-    x_user_id: Optional[int] = Header(default=None, alias="X-User-Id"),
+    x_user_id: Optional[int] = Header(default=None, alias="X-User-Id")
 ):
     user_id = resolve_current_user_id(x_user_id)
+
     with get_conn() as conn:
-        tipo_id = ensure_tipo_mascota(conn, m.especie, m.raza)
         cur = conn.execute(
             """
-            INSERT INTO mascota
-                (nombre, foto, edad, sexo, peso, altura, microchip, fecha_nacimiento,
-                 notas, id_usuario, id_tipo_mascota, id_veterinario)
-            VALUES (?, '', ?, ?, ?, NULL, NULL, ?, ?, ?, ?, NULL)
+            INSERT INTO mascota (
+                nombre, foto, edad, sexo, tamaño, vacunacion, condicion, contrato, cuidados_especiales,
+                id_usuario, id_tipo_mascota, id_veterinario
+            )
+            VALUES (?, '', ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
             """,
             (
                 m.nombre,
                 m.edad,
                 normalize_sex_to_db(m.sexo),
-                normalize_weight_to_db(m.peso),
-                None if m.fecha_nacimiento in (None, "No especificado") else m.fecha_nacimiento,
-                m.notas,
+                m.tamaño,
+                m.vacunacion,
+                m.condicion,
+                m.contrato,
+                m.cuidados_especiales,
                 user_id,
-                tipo_id,
+                m.id_tipo_mascota,
+                m.id_veterinario,
             ),
         )
+
         mascota_id = cur.lastrowid
-        upsert_need(conn, mascota_id, "vacuna", m.vacunas or "")
-        upsert_need(conn, mascota_id, "alergia", m.alergias or "")
-        upsert_need(conn, mascota_id, "dieta", m.dieta or "")
         conn.commit()
 
         row = conn.execute(
             """
-            SELECT m.id, m.nombre, m.edad, m.sexo, m.peso, m.fecha_nacimiento, m.notas,
-                   tm.especie, tm.raza
-            FROM mascota m
-            INNER JOIN tipo_mascota tm ON tm.id = m.id_tipo_mascota
-            WHERE m.id=?
+            SELECT id, nombre, edad, sexo, tamaño, vacunacion, condicion, contrato, cuidados_especiales
+            FROM mascota
+            WHERE id=?
             """,
             (mascota_id,),
         ).fetchone()
+
         return serialize_pet_row(conn, row)
 
 
@@ -475,70 +480,99 @@ def create_mascota(
 def update_mascota(
     pet_id: int,
     m: MascotaBase,
-    x_user_id: Optional[int] = Header(default=None, alias="X-User-Id"),
+    x_user_id: Optional[int] = Header(default=None, alias="X-User-Id")
 ):
     user_id = resolve_current_user_id(x_user_id)
+
     with get_conn() as conn:
         existing = conn.execute(
             "SELECT id FROM mascota WHERE id=? AND id_usuario=?",
             (pet_id, user_id),
         ).fetchone()
+
         if not existing:
             raise HTTPException(status_code=404, detail="Mascota no encontrada")
 
-        tipo_id = ensure_tipo_mascota(conn, m.especie, m.raza)
         conn.execute(
             """
             UPDATE mascota
-            SET nombre=?, edad=?, sexo=?, peso=?, fecha_nacimiento=?, notas=?, id_tipo_mascota=?
+            SET nombre=?, edad=?, sexo=?, tamaño=?, vacunacion=?, condicion=?, contrato=?, cuidados_especiales=?,
+                id_tipo_mascota=?, id_veterinario=?
             WHERE id=?
             """,
             (
                 m.nombre,
                 m.edad,
                 normalize_sex_to_db(m.sexo),
-                normalize_weight_to_db(m.peso),
-                None if m.fecha_nacimiento in (None, "No especificado") else m.fecha_nacimiento,
-                m.notas,
-                tipo_id,
+                m.tamaño,
+                m.vacunacion,
+                m.condicion,
+                m.contrato,
+                m.cuidados_especiales,
+                m.id_tipo_mascota,
+                m.id_veterinario,
                 pet_id,
             ),
         )
-        conn.execute("DELETE FROM mascota_x_necesidad WHERE id_mascota=?", (pet_id,))
-        upsert_need(conn, pet_id, "vacuna", m.vacunas or "")
-        upsert_need(conn, pet_id, "alergia", m.alergias or "")
-        upsert_need(conn, pet_id, "dieta", m.dieta or "")
+
         conn.commit()
 
         row = conn.execute(
             """
-            SELECT m.id, m.nombre, m.edad, m.sexo, m.peso, m.fecha_nacimiento, m.notas,
-                   tm.especie, tm.raza
-            FROM mascota m
-            INNER JOIN tipo_mascota tm ON tm.id = m.id_tipo_mascota
-            WHERE m.id=?
+            SELECT id, nombre, edad, sexo, tamaño, vacunacion, condicion, contrato, cuidados_especiales
+            FROM mascota
+            WHERE id=?
             """,
             (pet_id,),
         ).fetchone()
+
         return serialize_pet_row(conn, row)
 
 
 @app.delete("/pets/{pet_id}")
 def delete_mascota(
     pet_id: int,
-    x_user_id: Optional[int] = Header(default=None, alias="X-User-Id"),
+    x_user_id: Optional[int] = Header(default=None, alias="X-User-Id")
 ):
     user_id = resolve_current_user_id(x_user_id)
+
     with get_conn() as conn:
-        existing = conn.execute(
+        # 1. Verificar que la mascota exista y pertenezca al usuario
+        mascota = conn.execute(
             "SELECT id FROM mascota WHERE id=? AND id_usuario=?",
             (pet_id, user_id),
         ).fetchone()
-        if not existing:
+
+        if not mascota:
             raise HTTPException(status_code=404, detail="Mascota no encontrada")
-        conn.execute("DELETE FROM mascota WHERE id=?", (pet_id,))
+
+        # 2. Validar que NO tenga reservas activas (por fecha actual)
+        reserva_activa = conn.execute(
+            """
+            SELECT id FROM reserva
+            WHERE id_mascota = ?
+            AND DATE(fecha_ingreso) <= DATE('now')
+            AND DATE(fecha_salida) >= DATE('now')
+            LIMIT 1
+            """,
+            (pet_id,),
+        ).fetchone()
+
+        if reserva_activa:
+            raise HTTPException(
+                status_code=400,
+                detail="No se puede eliminar la mascota porque tiene una reserva activa"
+            )
+
+        # 3. Eliminar mascota
+        conn.execute(
+            "DELETE FROM mascota WHERE id=?",
+            (pet_id,),
+        )
+
         conn.commit()
-    return {"success": True}
+
+        return {"message": "Mascota eliminada correctamente"}
 
 
 # ── Rooms endpoint (so Flutter shows real available rooms) ────────────────────
