@@ -1,12 +1,32 @@
 class Pet {
   int? id;
-  String name, type, breed, age;
-  String gender, weight, birthDate, vaccines, allergies, diet, notes;
+
+  String name;
+  String age;
+
+  String? size;
+  String? vaccines;
+  String? condition;
+  String? contract;
+  String? specialCare;
+
+  int? genderInt; // 0 = macho, 1 = hembra
 
   Pet({
-    this.id, required this.name, required this.type, required this.breed, required this.age,
-    this.gender = "No especificado", this.weight = "No especificado",
-    this.birthDate = "No especificado", this.vaccines = "No especificado",
-    this.allergies = "Ninguna", this.diet = "Normal", this.notes = "",
+    this.id,
+    required this.name,
+    required this.age,
+    this.size,
+    this.vaccines = "No especificado",
+    this.condition = "Desconocida",
+    this.contract = "No definido",
+    this.specialCare = "Ninguno",
+    this.genderInt,
   });
+
+  String get genderLabel {
+    if (genderInt == 0) return "Macho";
+    if (genderInt == 1) return "Hembra";
+    return "No especificado";
+  }
 }
