@@ -37,7 +37,6 @@ class _EditProfilePageState extends State<EditProfilePage> {
       final dio = Dio();
       final response = await dio.get(
         'http://10.0.2.2:8000/users/me',
-        //'http://192.168.18.9:8000/users/me',
         options: Options(headers: {'X-User-Id': widget.userId}),
       );
       if (response.statusCode == 200) {
@@ -82,7 +81,6 @@ class _EditProfilePageState extends State<EditProfilePage> {
       final dio = Dio();
       await dio.put(
         'http://10.0.2.2:8000/users/me',
-        //'http://192.168.18.9:8000/users/me',
         options: Options(headers: {'X-User-Id': widget.userId}),
         data: {
           "nombre": _nameController.text,

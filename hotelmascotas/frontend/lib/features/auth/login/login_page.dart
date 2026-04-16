@@ -32,7 +32,6 @@ class _LoginPageState extends State<LoginPage> {
       final dio = Dio();
       final response = await dio.post(
         'http://10.0.2.2:8000/auth/login',
-        //'http://192.168.18.9:8000/auth/login',
         data: {'email': email, 'password': password},
       );
 
