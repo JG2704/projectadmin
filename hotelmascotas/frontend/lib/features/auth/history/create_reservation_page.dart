@@ -1,6 +1,5 @@
 import 'package:flutter/material.dart';
 import 'package:dio/dio.dart';
-import '../notifications/notifications_data.dart';
 import '../../../services/auth_service.dart';
 
 class CreateReservationPage extends StatefulWidget {
@@ -95,12 +94,39 @@ class _CreateReservationPageState extends State<CreateReservationPage> {
       if (response.statusCode == 200) {
         final responseData = response.data;
 
-        notifications.insert(0, {
-          "type": "reserva",
-          "title": "Reserva confirmada",
-          "message": "Reserva creada para $_selectedPetName.",
-          "time": "Ahora",
-        });
+        try {
+          await dio.post(
+            '/notifications',
+            data: {
+              "tipo": "reserva_confirmada",
+              "descripcion":
+                  "Tu reserva para $_selectedPetName fue creada correctamente.",
+              "id_reserva": responseData["id"],
+            },
+          );
+
+          final today = DateTime.now();
+          final startDate = DateTime(
+            _selectedDates!.start.year,
+            _selectedDates!.start.month,
+            _selectedDates!.start.day,
+          );
+          final currentDate = DateTime(today.year, today.month, today.day);
+
+          if (startDate.difference(currentDate).inDays <= 3) {
+            await dio.post(
+              '/notifications',
+              data: {
+                "tipo": "recordatorio",
+                "descripcion":
+                    "Tu reserva para $_selectedPetName inicia dentro de los próximos 3 días.",
+                "id_reserva": responseData["id"],
+              },
+            );
+          }
+        } catch (_) {
+          // No bloquea la creación de la reserva si falla solo la notificación
+        }
 
         widget.onCreate?.call(responseData);
 

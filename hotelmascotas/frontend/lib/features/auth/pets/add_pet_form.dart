@@ -53,6 +53,19 @@ Future<void> _savePetToBackend() async {
           "notas": cuidadosController.text.trim(),
         },
       );
+
+      try {
+        await dio.post(
+          '/notifications',
+          data: {
+            "tipo": "mascota_agregada",
+            "descripcion":
+                "Agregaste a ${nameController.text.trim()} a tus mascotas.",
+          },
+        );
+      } catch (_) {
+        // No bloquear el alta de mascota si la notificación falla
+      }
       
       if (!mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(
