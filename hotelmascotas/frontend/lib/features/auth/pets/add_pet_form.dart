@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:dio/dio.dart';
 import '../../../models/pet_model.dart';
+import '../../../services/auth_service.dart';
 
 class AddPetForm extends StatefulWidget {
   const AddPetForm({super.key});
@@ -36,9 +37,10 @@ Future<void> _savePetToBackend() async {
     setState(() => _isLoading = true);
 
     try {
-      final dio = Dio();
+      final dio = await AuthService.getDioWithAuth();
+      // ignore: unused_local_variable
       final response = await dio.post(
-        'http://10.0.2.2:8000/pets',
+        '/pets',
         data: {
           "nombre": nameController.text.trim(),
           "especie": tipoController.text.trim(),
