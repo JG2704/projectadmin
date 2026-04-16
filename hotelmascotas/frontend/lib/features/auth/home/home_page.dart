@@ -4,13 +4,13 @@ import '../pets/pets_page.dart';
 import '../history/history_page.dart'; 
 import '../notifications/notifications_page.dart';
 import '../profile/profile_page.dart';
-import '../history/create_reservation_page.dart'; 
+import '../history/create_reservation_page.dart';
+import '../../../services/auth_service.dart'; 
 
 class HomePage extends StatefulWidget {
   final String userName;
-  final int userId; // <-- Agregamos este campo
 
-  const HomePage({super.key, required this.userName, required this.userId});
+  const HomePage({super.key, required this.userName});
 
   @override
   State<HomePage> createState() => _HomePageState();
@@ -86,29 +86,36 @@ class _HomePageState extends State<HomePage> {
 
   Future<void> _refreshDashboard() async {
     setState(() => _isLoading = true);
-    
-try {
-      final dio = Dio();
-      // Usamos el userId que viene del widget
-      final options = Options(headers: {'X-User-Id': widget.userId});
-      
-      final userRes = await dio.get('http://10.0.2.2:8000/users/me', options: options);
-      final historyRes = await dio.get('http://10.0.2.2:8000/reservations/history', options: options);
+
+    try {
+      // Verificar si el usuario está autenticado
+      final isAuth = await AuthService.isAuthenticated();
+      if (!isAuth) {
+        if (mounted) {
+          Navigator.pushNamedAndRemoveUntil(context, '/login', (route) => false);
+        }
+        return;
+      }
+
+      // Obtener Dio con user_id en headers
+      final dio = await AuthService.getDioWithAuth();
+
+      final userRes = await dio.get('/users/me');
+      final historyRes = await dio.get('/reservations/history');
+      final petsRes = await dio.get('/pets');
 
       if (mounted) {
         setState(() {
           _currentName = userRes.data['nombre'] ?? widget.userName;
-          
-          // 🔥 AQUÍ USAMOS historyRes (esto quita el error de variable no usada)
           _activeReservations = (historyRes.data as List)
               .where((r) => r["status"] == "Activa")
               .toList();
-              
+          _pets = petsRes.data as List<dynamic>;
           _isLoading = false;
         });
       }
     } catch (e) {
-      debugPrint("Error: $e");
+      debugPrint("Error cargando dashboard: $e");
       if (mounted) setState(() => _isLoading = false);
     }
   }
@@ -152,8 +159,6 @@ try {
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
               _buildHeader(),
-              const SizedBox(height: 16),
-              _buildSearchBar(),
               const SizedBox(height: 16),
               _buildStatsRow(),
               const SizedBox(height: 20),
@@ -204,29 +209,6 @@ try {
     );
   }
 
-  Widget _buildSearchBar() {
-    return Padding(
-      padding: const EdgeInsets.symmetric(horizontal: 20),
-      child: Container(
-        height: 45,
-        padding: const EdgeInsets.symmetric(horizontal: 16),
-        decoration: BoxDecoration(
-          color: Colors.white,
-          borderRadius: BorderRadius.circular(12),
-          boxShadow: [
-            BoxShadow(color: Colors.black.withOpacity(0.05), blurRadius: 8),
-          ],
-        ),
-        child: const Row(
-          children: [
-            Icon(Icons.search, color: Colors.grey),
-            SizedBox(width: 10),
-            Text("Buscar...", style: TextStyle(color: Colors.grey)),
-          ],
-        ),
-      ),
-    );
-  }
 
   Widget _buildStatsRow() {
     return Padding(

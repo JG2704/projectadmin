@@ -20,7 +20,7 @@ INSERT INTO veterinario (id, nombre, telefono, correo, direccion) VALUES
 
 INSERT INTO necesidad (id, tipo) VALUES
 (1, 'vacuna'),
-(2, 'alergia'),
+(2, 'conditions'),
 (3, 'dieta');
 
 INSERT INTO hotel (id, nombre, telefono, correo, direccion) VALUES
@@ -47,7 +47,9 @@ INSERT INTO tipo_notificacion (id, tipo) VALUES
 (3, 'reserva_finalizada'),
 (4, 'actualizacion'),
 (5, 'recordatorio'),
-(6, 'novedad_app');
+(6, 'novedad_app'),
+(7, 'mascota_agregada'),
+(8, 'mascota_eliminada');
 
 INSERT INTO servicio (id, nombre, tipo_hospedaje, precio) VALUES
 (1, 'bano', 2, 15.0),
@@ -59,15 +61,20 @@ INSERT INTO usuario (id, cedula, nombre, email, telefono, direccion, clave_hash,
 (2, '1-1111-1111', 'Gabriel Marín', 'gabmar@hotel.com', '7000-1111', 'San Jose, Costa Rica', 'admin123', '2026-04-06', 1, 2, 2),
 (3, '2-2222-2222', 'Carlos Mendez', 'carlos@gmail.com', '7111-2222', 'Cartago, Costa Rica', '123456', '2026-04-07', 1, 2, 1);
 
-INSERT INTO mascota (id, nombre, foto, edad, sexo, peso, altura, microchip, fecha_nacimiento, notas, id_usuario, id_tipo_mascota, id_veterinario) VALUES
-(1, 'Max', '', 3, 0, 32.5, 55.0, 'MC-0001', '2023-05-10', 'Le gusta jugar con pelotas.', 1, 1, 1),
-(2, 'Mia', '', 2, 1, 4.8, 28.0, 'MC-0002', '2024-01-20', 'Muy tranquila y sociable.', 3, 2, 2),
-(3, 'Copito', '', 1, 0, 1.4, 18.0, '', '2025-02-11', 'Necesita espacio tranquilo.', 3, 3, 2);
+INSERT INTO mascota (
+    id, nombre, foto, edad, sexo, tamaño, vacunacion, condicion, contrato, cuidados_especiales,
+    id_usuario, id_tipo_mascota, id_veterinario
+) VALUES
+(1, 'Max', '', 3, 0, 55.0, 'Completa', 'Saludable', 'Adopción', 'Ninguno', 1, 1, 1),
+
+(2, 'Mia', '', 2, 1, 28.0, 'Parcial', 'En tratamiento', 'Temporal', 'Requiere medicación diaria', 3, 2, 2),
+
+(3, 'Copito', '', 1, 0, 18.0, 'Pendiente', 'Delicado', 'Adopción', 'Ambiente tranquilo', 3, 3, 2);
 
 INSERT INTO mascota_x_necesidad (id, descripcion, id_mascota, id_necesidad) VALUES
 (1, 'Vacunas al dia', 1, 1),
 (2, 'Dieta de alimento seco premium', 1, 3),
-(3, 'Alergia al pollo', 2, 2),
+(3, 'conditions al pollo', 2, 2),
 (4, 'Verduras y pellets diariamente', 3, 3);
 
 INSERT INTO reserva (id, fecha_ingreso, fecha_salida, estancia, precio, id_mascota, id_habitacion, id_estado, id_tipo_hospedaje) VALUES

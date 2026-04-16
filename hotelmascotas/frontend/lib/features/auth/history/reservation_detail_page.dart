@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:dio/dio.dart';
+import '../../../services/auth_service.dart';
 
 class ReservationDetailPage extends StatefulWidget {
   final Map<String, dynamic> reservation;
@@ -16,7 +17,14 @@ class ReservationDetailPage extends StatefulWidget {
 class _ReservationDetailPageState extends State<ReservationDetailPage> {
   bool _isCancelling = false;
 
-  bool get isAlreadyCancelled => widget.reservation["status"] == "Cancelada";
+  bool get _isCancelled => widget.reservation["status"] == "Cancelada";
+  bool get _isCompleted => widget.reservation["status"] == "Completada";
+
+  Color get _statusColor {
+    if (_isCancelled) return Colors.red;
+    if (_isCompleted) return Colors.orange;
+    return Colors.green;
+  }
 
   Future<void> _cancelReservation() async {
     final confirm = await showDialog<bool>(
@@ -25,8 +33,15 @@ class _ReservationDetailPageState extends State<ReservationDetailPage> {
         title: const Text("¿Cancelar Reserva?"),
         content: const Text("Esta acción no se puede deshacer."),
         actions: [
-          TextButton(onPressed: () => Navigator.pop(context, false), child: const Text("No")),
-          ElevatedButton(onPressed: () => Navigator.pop(context, true), child: const Text("Sí")),
+          TextButton(
+            onPressed: () => Navigator.pop(context, false),
+            child: const Text("No"),
+          ),
+          ElevatedButton(
+            style: ElevatedButton.styleFrom(backgroundColor: Colors.red),
+            onPressed: () => Navigator.pop(context, true),
+            child: const Text("Sí, cancelar", style: TextStyle(color: Colors.white)),
+          ),
         ],
       ),
     );
@@ -36,15 +51,23 @@ class _ReservationDetailPageState extends State<ReservationDetailPage> {
     setState(() => _isCancelling = true);
 
     try {
-      final dio = Dio();
+      final dio = await AuthService.getDioWithAuth();
       final resId = widget.reservation["id"];
-
-      final response = await dio.patch('http://10.0.2.2:8000/reservations/$resId/cancel');
+      final response = await dio.patch('/reservations/$resId/cancel');
 
       if (response.statusCode == 200 && mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text("Reserva cancelada exitosamente")),
+        );
         Navigator.pop(context, true);
       }
-    } catch (_) {} finally {
+    } on DioException catch (e) {
+      if (mounted) {
+        final detail = e.response?.data?['detail'] ?? "Error al cancelar la reserva";
+        ScaffoldMessenger.of(context)
+            .showSnackBar(SnackBar(content: Text(detail)));
+      }
+    } finally {
       if (mounted) setState(() => _isCancelling = false);
     }
   }
@@ -68,11 +91,11 @@ class _ReservationDetailPageState extends State<ReservationDetailPage> {
                   _servicesCard(),
                   _costCard(res),
                   _updatesCard(),
-                  if (!isAlreadyCancelled) _actions(),
+                  if (!_isCancelled && !_isCompleted) _actions(),
                   const SizedBox(height: 30),
                 ],
               ),
-            )
+            ),
           ],
         ),
       ),
@@ -90,25 +113,37 @@ class _ReservationDetailPageState extends State<ReservationDetailPage> {
       ),
       child: Row(
         children: [
-          const Icon(Icons.arrow_back, color: Colors.white),
+          GestureDetector(
+            onTap: () => Navigator.pop(context),
+            child: const Icon(Icons.arrow_back, color: Colors.white),
+          ),
           const SizedBox(width: 10),
           Expanded(
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                const Text("Detalles de Reserva", style: TextStyle(color: Colors.white, fontSize: 18)),
-                Text("#${res["id"] ?? ''}", style: const TextStyle(color: Colors.white70)),
+                const Text(
+                  "Detalles de Reserva",
+                  style: TextStyle(color: Colors.white, fontSize: 18),
+                ),
+                Text(
+                  "#${res["id"] ?? ''}",
+                  style: const TextStyle(color: Colors.white70),
+                ),
               ],
             ),
           ),
           Container(
             padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
             decoration: BoxDecoration(
-              color: isAlreadyCancelled ? Colors.red : Colors.green,
+              color: _statusColor,
               borderRadius: BorderRadius.circular(20),
             ),
-            child: Text(res["status"] ?? "", style: const TextStyle(color: Colors.white)),
-          )
+            child: Text(
+              res["status"] ?? "",
+              style: const TextStyle(color: Colors.white),
+            ),
+          ),
         ],
       ),
     );
@@ -121,7 +156,9 @@ class _ReservationDetailPageState extends State<ReservationDetailPage> {
       decoration: BoxDecoration(
         color: Colors.white,
         borderRadius: BorderRadius.circular(20),
-        boxShadow: [BoxShadow(color: Colors.black.withOpacity(0.05), blurRadius: 10)],
+        boxShadow: [
+          BoxShadow(color: Colors.black.withOpacity(0.05), blurRadius: 10),
+        ],
       ),
       child: Row(
         children: [
@@ -134,10 +171,16 @@ class _ReservationDetailPageState extends State<ReservationDetailPage> {
           Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              Text(res["name"] ?? "Mascota", style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 18)),
-              Text("${res["type"]}", style: const TextStyle(color: Colors.grey)),
+              Text(
+                res["name"] ?? "Mascota",
+                style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 18),
+              ),
+              Text(
+                "${res["type"]}",
+                style: const TextStyle(color: Colors.grey),
+              ),
             ],
-          )
+          ),
         ],
       ),
     );
@@ -148,7 +191,10 @@ class _ReservationDetailPageState extends State<ReservationDetailPage> {
       Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          const Text("Información de Hospedaje", style: TextStyle(fontWeight: FontWeight.bold)),
+          const Text(
+            "Información de Hospedaje",
+            style: TextStyle(fontWeight: FontWeight.bold),
+          ),
           const SizedBox(height: 10),
           _rowItem(Icons.location_on, "Habitación", "${res["room"]} - ${res["type"]}"),
           const SizedBox(height: 10),
@@ -165,8 +211,8 @@ class _ReservationDetailPageState extends State<ReservationDetailPage> {
         children: const [
           Text("Servicios Incluidos", style: TextStyle(fontWeight: FontWeight.bold)),
           SizedBox(height: 10),
-          _serviceItem("Baño y Grooming"),
-          _serviceItem("Paseos diarios"),
+          _ServiceItem("Baño y Grooming"),
+          _ServiceItem("Paseos diarios"),
         ],
       ),
     );
@@ -179,10 +225,10 @@ class _ReservationDetailPageState extends State<ReservationDetailPage> {
         children: [
           const Text("Resumen de Costos", style: TextStyle(fontWeight: FontWeight.bold)),
           const SizedBox(height: 10),
-          _costRow("Hospedaje", res["total"] ?? "\$0"),
-          _costRow("Servicios adicionales", "\$0"),
+          _CostRow("Hospedaje", res["total"] ?? "\$0"),
+          const _CostRow("Servicios adicionales", "\$0"),
           const Divider(),
-          _costRow("Total", res["total"] ?? "\$0", isTotal: true),
+          _CostRow("Total", res["total"] ?? "\$0", isTotal: true),
         ],
       ),
     );
@@ -195,8 +241,8 @@ class _ReservationDetailPageState extends State<ReservationDetailPage> {
         children: const [
           Text("Actualizaciones", style: TextStyle(fontWeight: FontWeight.bold)),
           SizedBox(height: 10),
-          _updateItem("15 Mar", "Max disfrutó de su paseo."),
-          _updateItem("14 Mar", "Grooming completado."),
+          _UpdateItem("15 Mar", "Max disfrutó de su paseo."),
+          _UpdateItem("14 Mar", "Grooming completado."),
         ],
       ),
     );
@@ -214,6 +260,7 @@ class _ReservationDetailPageState extends State<ReservationDetailPage> {
               style: ElevatedButton.styleFrom(
                 backgroundColor: Colors.white,
                 foregroundColor: Colors.black,
+                side: const BorderSide(color: Colors.grey),
               ),
               onPressed: () {},
               child: const Text("Contactar al Hotel"),
@@ -230,10 +277,14 @@ class _ReservationDetailPageState extends State<ReservationDetailPage> {
               ),
               onPressed: _isCancelling ? null : _cancelReservation,
               child: _isCancelling
-                  ? const CircularProgressIndicator(color: Colors.red)
+                  ? const SizedBox(
+                      width: 20,
+                      height: 20,
+                      child: CircularProgressIndicator(color: Colors.red, strokeWidth: 2),
+                    )
                   : const Text("Cancelar Reserva"),
             ),
-          )
+          ),
         ],
       ),
     );
@@ -246,7 +297,9 @@ class _ReservationDetailPageState extends State<ReservationDetailPage> {
       decoration: BoxDecoration(
         color: Colors.white,
         borderRadius: BorderRadius.circular(20),
-        boxShadow: [BoxShadow(color: Colors.black.withOpacity(0.05), blurRadius: 10)],
+        boxShadow: [
+          BoxShadow(color: Colors.black.withOpacity(0.05), blurRadius: 10),
+        ],
       ),
       child: child,
     );
@@ -257,21 +310,25 @@ class _ReservationDetailPageState extends State<ReservationDetailPage> {
       children: [
         Icon(icon, color: Colors.grey),
         const SizedBox(width: 10),
-        Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Text(title, style: const TextStyle(color: Colors.grey)),
-            Text(value, style: const TextStyle(fontWeight: FontWeight.bold)),
-          ],
-        )
+        Expanded(
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Text(title, style: const TextStyle(color: Colors.grey)),
+              Text(value, style: const TextStyle(fontWeight: FontWeight.bold)),
+            ],
+          ),
+        ),
       ],
     );
   }
 }
 
-class _serviceItem extends StatelessWidget {
+// ── Small helper widgets ───────────────────────────────────────────────────────
+
+class _ServiceItem extends StatelessWidget {
   final String text;
-  const _serviceItem(this.text);
+  const _ServiceItem(this.text);
 
   @override
   Widget build(BuildContext context) {
@@ -288,10 +345,10 @@ class _serviceItem extends StatelessWidget {
   }
 }
 
-class _updateItem extends StatelessWidget {
+class _UpdateItem extends StatelessWidget {
   final String date;
   final String text;
-  const _updateItem(this.date, this.text);
+  const _UpdateItem(this.date, this.text);
 
   @override
   Widget build(BuildContext context) {
@@ -309,12 +366,12 @@ class _updateItem extends StatelessWidget {
   }
 }
 
-class _costRow extends StatelessWidget {
+class _CostRow extends StatelessWidget {
   final String title;
   final String value;
   final bool isTotal;
 
-  const _costRow(this.title, this.value, {this.isTotal = false});
+  const _CostRow(this.title, this.value, {this.isTotal = false});
 
   @override
   Widget build(BuildContext context) {
@@ -323,12 +380,19 @@ class _costRow extends StatelessWidget {
       child: Row(
         mainAxisAlignment: MainAxisAlignment.spaceBetween,
         children: [
-          Text(title, style: TextStyle(fontWeight: isTotal ? FontWeight.bold : FontWeight.normal)),
-          Text(value,
-              style: TextStyle(
-                fontWeight: isTotal ? FontWeight.bold : FontWeight.normal,
-                color: isTotal ? const Color(0xFF6A00F4) : Colors.black,
-              )),
+          Text(
+            title,
+            style: TextStyle(
+              fontWeight: isTotal ? FontWeight.bold : FontWeight.normal,
+            ),
+          ),
+          Text(
+            value,
+            style: TextStyle(
+              fontWeight: isTotal ? FontWeight.bold : FontWeight.normal,
+              color: isTotal ? const Color(0xFF6A00F4) : Colors.black,
+            ),
+          ),
         ],
       ),
     );

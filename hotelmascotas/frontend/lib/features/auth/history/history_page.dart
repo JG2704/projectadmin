@@ -6,6 +6,7 @@ import 'create_reservation_page.dart';
 import '../pets/pets_page.dart';
 import '../notifications/notifications_page.dart';
 import '../profile/profile_page.dart';
+import '../../../services/auth_service.dart';
 
 class HistoryPage extends StatefulWidget {
   const HistoryPage({super.key});
@@ -36,9 +37,9 @@ class _HistoryPageState extends State<HistoryPage> {
     });
 
     try {
-      final dio = Dio();
+      final dio = await AuthService.getDioWithAuth();
       // Llamamos al endpoint que preparamos en Python
-      final response = await dio.get('http://10.0.2.2:8000/reservations/history');
+      final response = await dio.get('/reservations/history');
 
       if (response.statusCode == 200) {
         setState(() {
@@ -136,7 +137,7 @@ class _HistoryPageState extends State<HistoryPage> {
         unselectedItemColor: Colors.grey,
         onTap: (index) {
           if (index == 0) {
-            Navigator.pushReplacement(context, MaterialPageRoute(builder: (_) => const HomePage(userName: "Usuario", userId: 0)));
+            Navigator.pushReplacement(context, MaterialPageRoute(builder: (_) => const HomePage(userName: "Usuario")));
           } else if (index == 1) {
             Navigator.pushReplacement(context, MaterialPageRoute(builder: (_) => const PetsPage()));
           } else if (index == 2) {

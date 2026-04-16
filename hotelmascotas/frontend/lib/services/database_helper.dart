@@ -269,7 +269,7 @@ class DatabaseHelper {
 
     // Necesidades
     await db.insert('necesidad', {'tipo': 'vacuna'});
-    await db.insert('necesidad', {'tipo': 'alergia'});
+    await db.insert('necesidad', {'tipo': 'conditions'});
     await db.insert('necesidad', {'tipo': 'dieta'});
 
     // Estados de reserva
@@ -450,7 +450,7 @@ class DatabaseHelper {
 // NECESIDADES DE MASCOTAS
 // id_necesidad:
 // 1 = vacuna
-// 2 = alergia
+// 2 = conditions
 // 3 = dieta
 // =========================
 
@@ -467,7 +467,7 @@ class DatabaseHelper {
     });
 
     await db.insert('mascota_x_necesidad', {
-      'descripcion': 'Alergia al pollo',
+      'descripcion': 'conditions al pollo',
       'id_mascota': 2,
       'id_necesidad': 2,
     });

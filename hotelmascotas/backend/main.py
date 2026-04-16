@@ -3,10 +3,24 @@ from pathlib import Path
 import sqlite3
 from typing import Any, Dict, List, Optional
 
+import bcrypt
 from fastapi import FastAPI, Header, HTTPException
+from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
+from typing import Optional
 
 app = FastAPI(title="API Hotel de Mascotas - SQLite")
+
+# ── CORS ──────────────────────────────────────────────────────────────────────
+# Allows the Flutter Android emulator (10.0.2.2) and any localhost dev client
+# to reach this API without being blocked by same-origin policy.
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=["*"],
+    allow_credentials=True,
+    allow_methods=["*"],
+    allow_headers=["*"],
+)
 
 BASE_DIR = Path(__file__).resolve().parent
 DB_DIR = BASE_DIR / "database"
@@ -16,40 +30,67 @@ SEED_PATH = DB_DIR / "seed.sql"
 DEFAULT_USER_ID = 1
 
 
+# ── Pydantic models ───────────────────────────────────────────────────────────
+
 class LoginRequest(BaseModel):
     email: str
     password: str
 
 
 class UsuarioRegister(BaseModel):
+    cedula: str
     nombre: str
     email: str
     telefono: str
+    direccion: str
     password: str
 
 
-class MascotaBase(BaseModel):
+class MascotaCreate(BaseModel):
     nombre: str
     especie: str
     raza: str
     edad: int
-    sexo: Optional[str] = "No especificado"
-    peso: Optional[str] = "No especificado"
-    fecha_nacimiento: Optional[str] = "No especificado"
+    sexo: Optional[int] = None
+    peso: Optional[float] = None
     vacunas: Optional[str] = "No especificado"
-    alergias: Optional[str] = "Ninguna"
-    dieta: Optional[str] = "Normal"
+    conditions: Optional[str] = "Ninguna"
+    condicion: Optional[str] = "Desconocida"
+    contrato: Optional[str] = "No definido"
+    cuidados_especiales: Optional[str] = "Ninguno"
     notas: Optional[str] = ""
+    id_veterinario: Optional[int] = None
 
 
-class MascotaResponse(MascotaBase):
+class MascotaResponse(BaseModel):
     id: int
+    nombre: str
+    edad: int
+    especie: Optional[str] = "Desconocido"
+    raza: Optional[str] = "Desconocida"
+    sexo: Optional[str] = "No especificado"
+    tamaño: Optional[str] = "No especificado"
+    vacunacion: Optional[str] = "No especificado"
+    condicion: Optional[str] = "Desconocida"
+    contrato: Optional[str] = "No definido"
+    cuidados_especiales: Optional[str] = "Ninguno"
+    id_veterinario: Optional[int] = None
 
+class MascotaUpdate(BaseModel):
+    nombre: str
+    especie: str
+    raza: str
+    edad: int
+    sexo: int
+    peso: float
+    vacunas: str
+    conditions: str
+    notas: str
 
 class ReservaCreateRequest(BaseModel):
-    name: str
-    room: str
-    type: str
+    name: str        # pet name
+    room: str        # e.g. "Habitación 101"
+    type: str        # "Estándar" | "Especial"
     fecha_ingreso: str
     fecha_salida: str
 
@@ -64,6 +105,14 @@ class TarjetaCreate(BaseModel):
     numero: str
 
 
+class NotificationCreateRequest(BaseModel):
+    tipo: str
+    descripcion: str
+    id_reserva: Optional[int] = None
+
+
+# ── DB helpers ────────────────────────────────────────────────────────────────
+
 def get_conn() -> sqlite3.Connection:
     conn = sqlite3.connect(DB_PATH)
     conn.row_factory = sqlite3.Row
@@ -71,10 +120,14 @@ def get_conn() -> sqlite3.Connection:
     return conn
 
 
-def resolve_current_user_id(x_user_id: Optional[int] = Header(default=None, alias="X-User-Id")) -> int:
+def resolve_current_user_id(
+    x_user_id: Optional[int] = Header(default=None, alias="X-User-Id")
+) -> int:
     user_id = x_user_id if x_user_id is not None else DEFAULT_USER_ID
     with get_conn() as conn:
-        exists = conn.execute("SELECT 1 FROM usuario WHERE id=? AND activo=1", (user_id,)).fetchone()
+        exists = conn.execute(
+            "SELECT 1 FROM usuario WHERE id=? AND activo=1", (user_id,)
+        ).fetchone()
     if not exists:
         raise HTTPException(status_code=404, detail="Usuario no encontrado")
     return user_id
@@ -88,10 +141,14 @@ def table_exists(conn: sqlite3.Connection, table_name: str) -> bool:
     return row is not None
 
 
-def normalize_sex_to_db(sex: Optional[str]) -> Optional[int]:
-    if not sex:
+def normalize_sex_to_db(sex: Optional[Any]) -> Optional[int]:
+    if sex is None or sex == "":
         return None
-    lowered = sex.strip().lower()
+
+    if isinstance(sex, int):
+        return sex if sex in (0, 1) else None
+
+    lowered = str(sex).strip().lower()
     if lowered in {"macho", "male", "m", "0"}:
         return 0
     if lowered in {"hembra", "female", "f", "1"}:
@@ -107,33 +164,31 @@ def sex_to_label(value: Optional[int]) -> str:
     return "No especificado"
 
 
-def normalize_weight_to_db(peso: Optional[str]) -> Optional[float]:
-    if not peso:
+def normalize_size_to_db(tamano: Optional[str]) -> Optional[float]:
+    if not tamano:
         return None
-    stripped = peso.strip().lower().replace("kg", "")
+    stripped = tamano.strip().lower().replace("cm", "").replace("m", "")
     try:
         return float(stripped)
     except ValueError:
         return None
 
 
-def weight_to_label(value: Optional[float]) -> str:
+def size_to_label(value: Optional[float]) -> str:
     if value is None:
         return "No especificado"
-    return f"{value}kg"
+    return f"{value} cm"
 
 
 def ensure_tipo_mascota(conn: sqlite3.Connection, especie: str, raza: str) -> int:
     especie_db = especie.strip().lower() or "desconocido"
     raza_db = raza.strip().lower() or "sin raza"
-
     row = conn.execute(
         "SELECT id FROM tipo_mascota WHERE especie=? AND raza=?",
         (especie_db, raza_db),
     ).fetchone()
     if row:
         return row["id"]
-
     cur = conn.execute(
         "INSERT INTO tipo_mascota (especie, raza) VALUES (?, ?)",
         (especie_db, raza_db),
@@ -141,17 +196,17 @@ def ensure_tipo_mascota(conn: sqlite3.Connection, especie: str, raza: str) -> in
     return cur.lastrowid
 
 
-def upsert_need(conn: sqlite3.Connection, mascota_id: int, need_type: str, description: str) -> None:
+def upsert_need(
+    conn: sqlite3.Connection, mascota_id: int, need_type: str, description: str
+) -> None:
     description = (description or "").strip()
     if not description:
         return
-
     need_row = conn.execute(
         "SELECT id FROM necesidad WHERE tipo=?", (need_type,)
     ).fetchone()
     if not need_row:
         return
-
     conn.execute(
         "INSERT INTO mascota_x_necesidad (descripcion, id_mascota, id_necesidad) VALUES (?, ?, ?)",
         (description, mascota_id, need_row["id"]),
@@ -169,28 +224,28 @@ def serialize_pet_row(conn: sqlite3.Connection, row: sqlite3.Row) -> Dict[str, A
         (row["id"],),
     ).fetchall()
 
-    needs = {"vacunas": "No especificado", "alergias": "Ninguna", "dieta": "Normal"}
+    vacunas = row["vacunacion"] if "vacunacion" in row.keys() else "No especificado"
+    if not vacunas:
+        vacunas = "No especificado"
+
     for item in needs_rows:
         if item["tipo"] == "vacuna":
-            needs["vacunas"] = item["descripcion"]
-        elif item["tipo"] == "alergia":
-            needs["alergias"] = item["descripcion"]
-        elif item["tipo"] == "dieta":
-            needs["dieta"] = item["descripcion"]
+            vacunas = item["descripcion"]
 
     return {
         "id": row["id"],
         "nombre": row["nombre"],
-        "especie": (row["especie"] or "Desconocido").title(),
-        "raza": (row["raza"] or "Desconocida").title(),
         "edad": row["edad"] if row["edad"] is not None else 0,
-        "sexo": sex_to_label(row["sexo"]),
-        "peso": weight_to_label(row["peso"]),
-        "fecha_nacimiento": row["fecha_nacimiento"] or "No especificado",
-        "vacunas": needs["vacunas"],
-        "alergias": needs["alergias"],
-        "dieta": needs["dieta"],
-        "notas": row["notas"] or "",
+        "sexo": ("Hembra" if row["sexo"] == 1 else "Macho") if "sexo" in row.keys() and row["sexo"] is not None else "No especificado",
+        "tamaño": size_to_label(row["tamaño"]),
+        "vacunacion": vacunas,
+        "condicion": row["condicion"] if "condicion" in row.keys() and row["condicion"] else "Desconocida",
+        "contrato": row["contrato"] if "contrato" in row.keys() and row["contrato"] else "No definido",
+        "cuidados_especiales": row["cuidados_especiales"] if "cuidados_especiales" in row.keys() and row["cuidados_especiales"] else "Ninguno",
+        "id_tipo_mascota": row["id_tipo_mascota"] if "id_tipo_mascota" in row.keys() else None,
+        "id_veterinario": row["id_veterinario"] if "id_veterinario" in row.keys() else None,
+        "especie": row["especie"] if "especie" in row.keys() and row["especie"] else "Desconocido",
+        "raza": row["raza"] if "raza" in row.keys() and row["raza"] else "Desconocida",
     }
 
 
@@ -209,7 +264,9 @@ def map_reservation_row(row: sqlite3.Row) -> Dict[str, Any]:
     out_dt = datetime.fromisoformat(check_out)
 
     room = f"Habitación {row['numero']}"
-    hospedaje = "Estándar" if (row["tipo_hospedaje"] or "estandar") == "estandar" else "Premium"
+    tipo_raw = (row["tipo_hospedaje"] or "estandar").lower()
+    hospedaje = "Estándar" if tipo_raw.startswith("est") else "especial"
+
     return {
         "id": row["id"],
         "name": row["mascota_nombre"],
@@ -222,6 +279,57 @@ def map_reservation_row(row: sqlite3.Row) -> Dict[str, Any]:
         "total": f"${row['precio']:.2f}",
     }
 
+def insert_notification(
+    conn: sqlite3.Connection,
+    user_id: int,
+    tipo: str,
+    descripcion: str,
+    id_reserva: Optional[int] = None,
+) -> None:
+    tipo_row = conn.execute(
+        "SELECT id FROM tipo_notificacion WHERE tipo=?",
+        (tipo,),
+    ).fetchone()
+
+    if not tipo_row:
+        raise HTTPException(
+            status_code=404,
+            detail=f"Tipo de notificación '{tipo}' no encontrado",
+        )
+
+    conn.execute(
+        """
+        INSERT INTO notificacion (
+            descripcion, fecha, leida, id_usuario, id_reserva, id_tipo_notificacion
+        )
+        VALUES (?, ?, 0, ?, ?, ?)
+        """,
+        (
+            descripcion,
+            datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
+            user_id,
+            id_reserva,
+            tipo_row["id"],
+        ),
+    )
+
+
+# ── Password helpers ──────────────────────────────────────────────────────────
+
+def hash_password(password: str) -> str:
+    """Return a bcrypt hash of the given plaintext password."""
+    return bcrypt.hashpw(password.encode("utf-8"), bcrypt.gensalt()).decode("utf-8")
+
+
+def verify_password(plain: str, hashed: str) -> bool:
+    """Return True if plain matches the stored bcrypt hash."""
+    try:
+        return bcrypt.checkpw(plain.encode("utf-8"), hashed.encode("utf-8"))
+    except Exception:
+        return False
+
+
+# ── DB initialisation ─────────────────────────────────────────────────────────
 
 def initialize_database() -> None:
     DB_DIR.mkdir(parents=True, exist_ok=True)
@@ -232,7 +340,9 @@ def initialize_database() -> None:
             conn.executescript(SEED_PATH.read_text(encoding="utf-8"))
             return
 
-        users_count = conn.execute("SELECT COUNT(*) AS total FROM usuario").fetchone()["total"]
+        users_count = conn.execute(
+            "SELECT COUNT(*) AS total FROM usuario"
+        ).fetchone()["total"]
         if users_count == 0:
             conn.executescript(SEED_PATH.read_text(encoding="utf-8"))
 
@@ -241,55 +351,62 @@ def initialize_database() -> None:
 def on_startup() -> None:
     initialize_database()
 
+
+# ── Auth endpoints ────────────────────────────────────────────────────────────
+
 @app.post("/auth/login")
 def login(datos: LoginRequest):
     with get_conn() as conn:
-        # 1. Traemos el NOMBRE también del SQL
         user = conn.execute(
-            "SELECT id, nombre, id_tipo_usuario FROM usuario WHERE email = ? AND clave_hash = ?",
-            (datos.email, datos.password),
+            "SELECT id, clave_hash, id_tipo_usuario FROM usuario WHERE email=? AND activo=1",
+            (datos.email,),
         ).fetchone()
 
-    if user:
-        return {
-            "success": True,
-            "token": f"token_user_{user['id']}",
-            "id_tipo_usuario": user["id_tipo_usuario"],
-            "user_id": user["id"],
-            "nombre": user["nombre"], # <-- IMPORTANTE: Enviamos el nombre real
-        }
-    
-    raise HTTPException(status_code=401, detail="Credenciales incorrectas")
+    if not user or not verify_password(datos.password, user["clave_hash"]):
+        raise HTTPException(status_code=401, detail="Credenciales incorrectas")
+
+    return {
+        "success": True,
+        "token": f"token_user_{user['id']}",
+        "id_tipo_usuario": user["id_tipo_usuario"],
+    }
 
 
 @app.post("/auth/register")
 def register(datos: UsuarioRegister):
     with get_conn() as conn:
-        exists = conn.execute("SELECT 1 FROM usuario WHERE email=?", (datos.email,)).fetchone()
-        if exists:
-            raise HTTPException(status_code=400, detail="El correo ya está registrado")
+        try:
+            fecha_actual = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+            # Hasheo simulado (o real si están usando bcrypt)
+            hash_pw = hash_password(datos.password) 
+            
+            # Asignamos ID de tipo pago (1 = Efectivo) y tipo usuario (1 = Cliente) por defecto
+            conn.execute(
+                """
+                INSERT INTO usuario (cedula, nombre, email, telefono, direccion, clave_hash, fecha_registro, id_tipo_pago, id_tipo_usuario)
+                VALUES (?, ?, ?, ?, ?, ?, ?, 1, 1)
+                """,
+                (datos.cedula, datos.nombre, datos.email, datos.telefono, datos.direccion, hash_pw, fecha_actual)
+            )
+            conn.commit()
+            return {"success": True, "message": "Usuario creado"}
+        except sqlite3.IntegrityError:
+            # Esto atrapa si alguien intenta registrar una cédula o correo que ya existe
+            raise HTTPException(status_code=400, detail="La cédula o el correo ya están registrados en el sistema.")
 
-        cedula = f"TMP-{int(datetime.utcnow().timestamp())}"
-        fecha = datetime.utcnow().strftime("%Y-%m-%d")
-        conn.execute(
-            """
-            INSERT INTO usuario (cedula, nombre, email, telefono, direccion, clave_hash, fecha_registro, activo, id_tipo_pago, id_tipo_usuario)
-            VALUES (?, ?, ?, ?, ?, ?, ?, 1, 1, 1)
-            """,
-            (cedula, datos.nombre, datos.email, datos.telefono, "No especificada", datos.password, fecha),
-        )
-        conn.commit()
 
-    return {"success": True, "message": "Usuario creado exitosamente"}
-
+# ── User endpoints ────────────────────────────────────────────────────────────
 
 @app.get("/users/me")
-def get_perfil(x_user_id: Optional[int] = Header(default=None, alias="X-User-Id")):
+def get_perfil(
+    x_user_id: Optional[int] = Header(default=None, alias="X-User-Id")
+):
     user_id = resolve_current_user_id(x_user_id)
     with get_conn() as conn:
         user = conn.execute(
             """
-            SELECT u.id, u.cedula, u.nombre, u.email, u.telefono, u.direccion, u.id_tipo_pago, u.id_tipo_usuario
+            SELECT u.id, u.cedula, u.nombre, u.email, u.telefono,
+                   u.direccion, u.id_tipo_pago, u.id_tipo_usuario
             FROM usuario u
             WHERE u.id=?
             """,
@@ -324,145 +441,261 @@ def get_perfil(x_user_id: Optional[int] = Header(default=None, alias="X-User-Id"
         ).fetchone()
 
     perfil = dict(user)
-    perfil["stats"] = {"reservas": reservas, "mascotas": mascotas, "dias": dias_row["total"]}
+    perfil["stats"] = {
+        "reservas": reservas,
+        "mascotas": mascotas,
+        "dias": dias_row["total"],
+    }
     return perfil
 
 
+class ProfileUpdate(BaseModel):
+    nombre: str
+    cedula: str
+    email: str
+    telefono: str
+    direccion: str
+
 @app.put("/users/me")
-def update_perfil(datos: UsuarioUpdate, x_user_id: Optional[int] = Header(default=None, alias="X-User-Id")):
+def update_profile(datos: ProfileUpdate, x_user_id: Optional[int] = Header(default=None, alias="X-User-Id")):
     user_id = resolve_current_user_id(x_user_id)
     with get_conn() as conn:
         conn.execute(
-            "UPDATE usuario SET nombre=?, email=?, telefono=? WHERE id=?",
-            (datos.nombre, datos.email, datos.telefono, user_id),
+            """
+            UPDATE usuario 
+            SET nombre=?, cedula=?, email=?, telefono=?, direccion=? 
+            WHERE id=?
+            """,
+            (datos.nombre, datos.cedula, datos.email, datos.telefono, datos.direccion, user_id)
         )
         conn.commit()
-        user = conn.execute(
-            "SELECT id, cedula, nombre, email, telefono, direccion, id_tipo_pago, id_tipo_usuario FROM usuario WHERE id=?",
-            (user_id,),
-        ).fetchone()
+    return {"success": True, "message": "Perfil actualizado"}
 
-    return {"success": True, "data": dict(user)}
 
+# ── Pet endpoints ─────────────────────────────────────────────────────────────
 
 @app.get("/pets", response_model=List[MascotaResponse])
-def get_mascotas(x_user_id: Optional[int] = Header(default=None, alias="X-User-Id")):
+def get_mascotas(
+    x_user_id: Optional[int] = Header(default=None, alias="X-User-Id")
+):
     user_id = resolve_current_user_id(x_user_id)
+
     with get_conn() as conn:
         rows = conn.execute(
             """
-            SELECT m.id, m.nombre, m.edad, m.sexo, m.peso, m.fecha_nacimiento, m.notas, tm.especie, tm.raza
-            FROM mascota m
-            INNER JOIN tipo_mascota tm ON tm.id = m.id_tipo_mascota
-            WHERE m.id_usuario=?
-            ORDER BY m.id DESC
+                SELECT 
+                    m.id,
+                    m.nombre,
+                    m.edad,
+                    m.sexo,
+                    m.tamaño,
+                    m.vacunacion,
+                    m.condicion,
+                    m.contrato,
+                    m.cuidados_especiales,
+                    m.id_tipo_mascota,
+                    m.id_veterinario,
+                    tm.especie,
+                    tm.raza
+                FROM mascota m
+                JOIN tipo_mascota tm ON tm.id = m.id_tipo_mascota
+                WHERE m.id_usuario=?
+                ORDER BY m.id DESC
             """,
             (user_id,),
         ).fetchall()
         return [serialize_pet_row(conn, row) for row in rows]
 
-
-@app.post("/pets", response_model=MascotaResponse)
-def create_mascota(m: MascotaBase, x_user_id: Optional[int] = Header(default=None, alias="X-User-Id")):
+# 2. El endpoint que procesa todo
+@app.post("/pets")
+def create_mascota(m: MascotaCreate, x_user_id: Optional[int] = Header(default=None, alias="X-User-Id")):
     user_id = resolve_current_user_id(x_user_id)
     with get_conn() as conn:
-        tipo_id = ensure_tipo_mascota(conn, m.especie, m.raza)
-        cur = conn.execute(
+        # Buscamos o creamos el tipo de mascota (especie/raza)
+        tipo_row = conn.execute(
+            "SELECT id FROM tipo_mascota WHERE especie=? AND raza=?", 
+            (m.especie.lower(), m.raza.lower())
+        ).fetchone()
+
+        if not tipo_row:
+            cur = conn.execute(
+                "INSERT INTO tipo_mascota (especie, raza) VALUES (?, ?)",
+                (m.especie.lower(), m.raza.lower())
+            )
+            tipo_id = cur.lastrowid
+        else:
+            tipo_id = tipo_row["id"]
+        
+        conn.execute(
             """
-            INSERT INTO mascota (nombre, foto, edad, sexo, peso, altura, microchip, fecha_nacimiento, notas, id_usuario, id_tipo_mascota, id_veterinario)
-            VALUES (?, '', ?, ?, ?, NULL, NULL, ?, ?, ?, ?, NULL)
+            INSERT INTO mascota (nombre, edad, sexo, tamaño, vacunacion, condicion, contrato, cuidados_especiales, id_usuario, id_tipo_mascota, id_veterinario, foto)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
             """,
             (
                 m.nombre,
                 m.edad,
-                normalize_sex_to_db(m.sexo),
-                normalize_weight_to_db(m.peso),
-                None if m.fecha_nacimiento == "No especificado" else m.fecha_nacimiento,
-                m.notas,
+                m.sexo,
+                m.peso,
+                m.vacunas,
+                m.condicion,
+                m.contrato,
+                m.cuidados_especiales,
                 user_id,
                 tipo_id,
-            ),
+                "1",
+                ""
+            )
         )
-        mascota_id = cur.lastrowid
-        upsert_need(conn, mascota_id, "vacuna", m.vacunas or "")
-        upsert_need(conn, mascota_id, "alergia", m.alergias or "")
-        upsert_need(conn, mascota_id, "dieta", m.dieta or "")
         conn.commit()
-
-        row = conn.execute(
-            """
-            SELECT m.id, m.nombre, m.edad, m.sexo, m.peso, m.fecha_nacimiento, m.notas, tm.especie, tm.raza
-            FROM mascota m
-            INNER JOIN tipo_mascota tm ON tm.id = m.id_tipo_mascota
-            WHERE m.id=?
-            """,
-            (mascota_id,),
-        ).fetchone()
-
-        return serialize_pet_row(conn, row)
+    return {"success": True}
 
 
-@app.put("/pets/{pet_id}", response_model=MascotaResponse)
-def update_mascota(
-    pet_id: int, m: MascotaBase, x_user_id: Optional[int] = Header(default=None, alias="X-User-Id")
-):
+@app.put("/pets/{pet_id}")
+def update_mascota(pet_id: int, m: MascotaCreate, x_user_id: Optional[int] = Header(default=None, alias="X-User-Id")):
     user_id = resolve_current_user_id(x_user_id)
     with get_conn() as conn:
-        existing = conn.execute(
+        # 1. Verificar existencia y pertenencia
+        row = conn.execute("SELECT id FROM mascota WHERE id=? AND id_usuario=?", (pet_id, user_id)).fetchone()
+        if not row:
+            raise HTTPException(status_code=404, detail="Mascota no encontrada o no autorizada")
+
+        # 2. Lógica idéntica al Add: Buscar o crear el tipo (Especie + Raza)
+        tipo_row = conn.execute(
+            "SELECT id FROM tipo_mascota WHERE especie=? AND raza=?", 
+            (m.especie, m.raza)
+        ).fetchone()
+        
+        if tipo_row:
+            print(tipo_row["id"])
+            tipo_id = tipo_row["id"]
+        else:
+            cursor = conn.execute(
+                "INSERT INTO tipo_mascota (especie, raza) VALUES (?, ?)", 
+                (m.especie, m.raza)
+            )
+            tipo_id = cursor.lastrowid
+        print("DEBUG: Nuevo tipo_mascota creado con ID", tipo_id)
+
+        # 3. Actualizar la mascota con el tipo_id resuelto
+        print("DEBUG PET_ID:", pet_id)
+        print("DEBUG USER_ID:", user_id)
+
+        check = conn.execute(
+            "SELECT id, nombre FROM mascota WHERE id=?",
+            (pet_id,)
+        ).fetchone()
+
+        print("EXISTE:", check)
+
+        check2 = conn.execute(
+            "SELECT id FROM mascota WHERE id=? AND id_usuario=?",
+            (pet_id, user_id)
+        ).fetchone()
+
+        print("MATCH USER:", check2)
+        conn.execute(
+            """
+            UPDATE mascota 
+            SET 
+                id_tipo_mascota=?,
+                nombre=?,
+                edad=?,
+                sexo=?,
+                tamaño=?,
+                vacunacion=?,
+                condicion=?,
+                contrato=?,
+                cuidados_especiales=?
+            WHERE id=? AND id_usuario=?
+            """,
+            (
+                tipo_id, m.nombre, m.edad, m.sexo, m.peso, 
+                m.vacunas, m.condicion, m.contrato, m.cuidados_especiales, pet_id, user_id
+            ),
+        )
+        conn.commit()
+        return {"id": pet_id, "status": "updated"}
+
+
+@app.delete("/pets/{pet_id}")
+def delete_mascota(
+    pet_id: int,
+    x_user_id: Optional[int] = Header(default=None, alias="X-User-Id")
+):
+    user_id = resolve_current_user_id(x_user_id)
+
+    with get_conn() as conn:
+        # 1. Verificar que la mascota exista y pertenezca al usuario
+        mascota = conn.execute(
             "SELECT id FROM mascota WHERE id=? AND id_usuario=?",
             (pet_id, user_id),
         ).fetchone()
-        if not existing:
+
+        if not mascota:
             raise HTTPException(status_code=404, detail="Mascota no encontrada")
 
-        tipo_id = ensure_tipo_mascota(conn, m.especie, m.raza)
-        conn.execute(
+        # 2. Validar que NO tenga reservas activas (por fecha actual)
+        reserva_activa = conn.execute(
             """
-            UPDATE mascota
-            SET nombre=?, edad=?, sexo=?, peso=?, fecha_nacimiento=?, notas=?, id_tipo_mascota=?
-            WHERE id=?
-            """,
-            (
-                m.nombre,
-                m.edad,
-                normalize_sex_to_db(m.sexo),
-                normalize_weight_to_db(m.peso),
-                None if m.fecha_nacimiento == "No especificado" else m.fecha_nacimiento,
-                m.notas,
-                tipo_id,
-                pet_id,
-            ),
-        )
-
-        conn.execute("DELETE FROM mascota_x_necesidad WHERE id_mascota=?", (pet_id,))
-        upsert_need(conn, pet_id, "vacuna", m.vacunas or "")
-        upsert_need(conn, pet_id, "alergia", m.alergias or "")
-        upsert_need(conn, pet_id, "dieta", m.dieta or "")
-        conn.commit()
-
-        row = conn.execute(
-            """
-            SELECT m.id, m.nombre, m.edad, m.sexo, m.peso, m.fecha_nacimiento, m.notas, tm.especie, tm.raza
-            FROM mascota m
-            INNER JOIN tipo_mascota tm ON tm.id = m.id_tipo_mascota
-            WHERE m.id=?
+            SELECT id FROM reserva
+            WHERE id_mascota = ?
+            AND DATE(fecha_ingreso) <= DATE('now')
+            AND DATE(fecha_salida) >= DATE('now')
+            LIMIT 1
             """,
             (pet_id,),
         ).fetchone()
 
-        return serialize_pet_row(conn, row)
+        if reserva_activa:
+            raise HTTPException(
+                status_code=400,
+                detail="No se puede eliminar la mascota porque tiene una reserva activa"
+            )
 
+        # 3. Eliminar mascota. Si SQLite igual detecta una restricción, la convertimos en mensaje útil.
+        try:
+            conn.execute(
+                "DELETE FROM mascota WHERE id=?",
+                (pet_id,),
+            )
+            conn.commit()
+        except sqlite3.IntegrityError:
+            raise HTTPException(
+                status_code=400,
+                detail="No se puede eliminar la mascota porque tiene reservas registradas"
+            )
+
+        return {"message": "Mascota eliminada correctamente"}
+
+
+# ── Rooms endpoint (so Flutter shows real available rooms) ────────────────────
+
+@app.get("/rooms")
+def get_rooms():
+    """Return all rooms with their current status."""
+    with get_conn() as conn:
+        rows = conn.execute(
+            "SELECT id, numero, estado FROM habitacion ORDER BY numero"
+        ).fetchall()
+    return [dict(row) for row in rows]
+
+
+# ── Reservation endpoints ─────────────────────────────────────────────────────
 
 @app.post("/reservations")
-def create_reserva(r: ReservaCreateRequest, x_user_id: Optional[int] = Header(default=None, alias="X-User-Id")):
+def create_reserva(
+    r: ReservaCreateRequest,
+    x_user_id: Optional[int] = Header(default=None, alias="X-User-Id"),
+):
     user_id = resolve_current_user_id(x_user_id)
     ingreso = datetime.fromisoformat(r.fecha_ingreso.replace("Z", "+00:00")).date()
     salida = datetime.fromisoformat(r.fecha_salida.replace("Z", "+00:00")).date()
     dias = max((salida - ingreso).days, 1)
 
     room_number = r.room.replace("Habitación", "").strip()
+
     tipo_hospedaje_db = "estandar" if r.type.lower().startswith("est") else "especial"
-    precio_base = 50 if tipo_hospedaje_db == "estandar" else 85
+    precio_base = 50.0 if tipo_hospedaje_db == "estandar" else 85.0
     total = float(dias * precio_base)
 
     with get_conn() as conn:
@@ -482,15 +715,43 @@ def create_reserva(r: ReservaCreateRequest, x_user_id: Optional[int] = Header(de
         if (habitacion["estado"] or "").lower() != "disponible":
             raise HTTPException(status_code=409, detail="Habitación no disponible")
 
-        estado = conn.execute("SELECT id FROM estado_reserva WHERE estado='activa'").fetchone()
+        estado = conn.execute(
+            "SELECT id FROM estado_reserva WHERE estado='activa'"
+        ).fetchone()
         tipo_hosp = conn.execute(
             "SELECT id FROM tipo_hospedaje WHERE tipo=?",
             (tipo_hospedaje_db,),
         ).fetchone()
+        if not tipo_hosp:
+            raise HTTPException(status_code=500, detail=f"tipo_hospedaje '{tipo_hospedaje_db}' no encontrado en BD")
+        
+        conflict = conn.execute(
+            """
+            SELECT 1
+            FROM reserva r
+            JOIN estado_reserva er ON er.id = r.id_estado
+            WHERE r.id_habitacion = ?
+            AND er.estado = 'activa'
+            AND NOT (
+                r.fecha_salida <= ? OR
+                r.fecha_ingreso >= ?
+            )
+            LIMIT 1
+            """,
+            (habitacion["id"], ingreso.isoformat(), salida.isoformat())
+        ).fetchone()
+
+        if conflict:
+            raise HTTPException(
+                status_code=409,
+                detail="La habitación ya está reservada en esas fechas"
+            )
 
         cur = conn.execute(
             """
-            INSERT INTO reserva (fecha_ingreso, fecha_salida, estancia, precio, id_mascota, id_habitacion, id_estado, id_tipo_hospedaje)
+            INSERT INTO reserva
+                (fecha_ingreso, fecha_salida, estancia, precio,
+                 id_mascota, id_habitacion, id_estado, id_tipo_hospedaje)
             VALUES (?, ?, ?, ?, ?, ?, ?, ?)
             """,
             (
@@ -504,7 +765,10 @@ def create_reserva(r: ReservaCreateRequest, x_user_id: Optional[int] = Header(de
                 tipo_hosp["id"],
             ),
         )
-        conn.execute("UPDATE habitacion SET estado='ocupado' WHERE id=?", (habitacion["id"],))
+        # conn.execute(
+        #     "UPDATE habitacion SET estado='ocupado' WHERE id=?",
+        #     (habitacion["id"],),
+        # )
         reserva_id = cur.lastrowid
         conn.commit()
 
@@ -524,12 +788,13 @@ def create_reserva(r: ReservaCreateRequest, x_user_id: Optional[int] = Header(de
             """,
             (reserva_id,),
         ).fetchone()
-
         return map_reservation_row(row)
 
 
 @app.get("/reservations/history")
-def get_history(x_user_id: Optional[int] = Header(default=None, alias="X-User-Id")):
+def get_history(
+    x_user_id: Optional[int] = Header(default=None, alias="X-User-Id")
+):
     user_id = resolve_current_user_id(x_user_id)
     with get_conn() as conn:
         rows = conn.execute(
@@ -549,17 +814,19 @@ def get_history(x_user_id: Optional[int] = Header(default=None, alias="X-User-Id
             """,
             (user_id,),
         ).fetchall()
-
         return [map_reservation_row(row) for row in rows]
 
 
 @app.patch("/reservations/{res_id}/cancel")
-def cancel_res(res_id: int, x_user_id: Optional[int] = Header(default=None, alias="X-User-Id")):
+def cancel_res(
+    res_id: int,
+    x_user_id: Optional[int] = Header(default=None, alias="X-User-Id"),
+):
     user_id = resolve_current_user_id(x_user_id)
     with get_conn() as conn:
         active = conn.execute(
             """
-            SELECT r.id, r.id_habitacion, er.estado AS estado_actual
+            SELECT r.id, r.id_habitacion, er.estado AS estado_actual, m.nombre AS mascota_nombre
             FROM reserva r
             JOIN mascota m ON m.id = r.id_mascota
             JOIN estado_reserva er ON er.id = r.id_estado
@@ -567,16 +834,28 @@ def cancel_res(res_id: int, x_user_id: Optional[int] = Header(default=None, alia
             """,
             (res_id, user_id),
         ).fetchone()
+
         if not active:
             raise HTTPException(status_code=404, detail="Reserva no encontrada")
 
         cancelled_state = conn.execute(
             "SELECT id FROM estado_reserva WHERE estado='cancelada'"
         ).fetchone()
+
         conn.execute(
             "UPDATE reserva SET id_estado=? WHERE id=?",
             (cancelled_state["id"], res_id),
         )
+
+        # NUEVO: crear notificación de cancelación
+        insert_notification(
+            conn,
+            user_id=user_id,
+            tipo="reserva_cancelada",
+            descripcion=f"Tu reserva para {active['mascota_nombre']} fue cancelada.",
+            id_reserva=res_id,
+        )
+
         if (active["estado_actual"] or "").lower() == "activa":
             other_active = conn.execute(
                 """
@@ -588,18 +867,24 @@ def cancel_res(res_id: int, x_user_id: Optional[int] = Header(default=None, alia
                 """,
                 (active["id_habitacion"], res_id),
             ).fetchone()
+
             if not other_active:
                 conn.execute(
                     "UPDATE habitacion SET estado='disponible' WHERE id=?",
                     (active["id_habitacion"],),
                 )
+
         conn.commit()
 
     return {"success": True}
 
 
+# ── Notifications ─────────────────────────────────────────────────────────────
+
 @app.get("/notifications")
-def get_notif(x_user_id: Optional[int] = Header(default=None, alias="X-User-Id")):
+def get_notif(
+    x_user_id: Optional[int] = Header(default=None, alias="X-User-Id")
+):
     user_id = resolve_current_user_id(x_user_id)
     with get_conn() as conn:
         rows = conn.execute(
@@ -607,26 +892,42 @@ def get_notif(x_user_id: Optional[int] = Header(default=None, alias="X-User-Id")
             SELECT n.id, n.descripcion, n.fecha, tn.tipo
             FROM notificacion n
             JOIN tipo_notificacion tn ON tn.id = n.id_tipo_notificacion
-            WHERE n.id_usuario=?
+            WHERE n.id_usuario=? AND n.leida=0
             ORDER BY n.id DESC
             """,
             (user_id,),
         ).fetchall()
 
-    mapped = []
+        mapped = []
+    title_map = {
+        "reserva_confirmada": "Reserva confirmada",
+        "reserva_modificada": "Reserva modificada",
+        "reserva_cancelada": "Reserva cancelada",
+        "reserva_finalizada": "Reserva finalizada",
+        "actualizacion": "Actualización",
+        "recordatorio": "Recordatorio",
+        "novedad_app": "Novedad de la app",
+        "mascota_agregada": "Mascota agregada",
+        "mascota_eliminada": "Mascota eliminada",
+    }
+
     for row in rows:
         tipo = row["tipo"]
-        ui_type = "recordatorio"
-        if "reserva" in tipo:
+
+        if tipo in {"reserva_confirmada", "reserva_modificada", "reserva_finalizada", "reserva_cancelada"}:
             ui_type = "reserva"
+        elif tipo in {"mascota_agregada", "mascota_eliminada"}:
+            ui_type = "mascota"
         elif tipo in {"actualizacion", "novedad_app"}:
             ui_type = "update"
+        else:
+            ui_type = "recordatorio"
 
         mapped.append(
             {
                 "id": row["id"],
                 "type": ui_type,
-                "title": tipo.replace("_", " ").title(),
+                "title": title_map.get(tipo, tipo.replace("_", " ").title()),
                 "message": row["descripcion"],
                 "time": row["fecha"],
             }
@@ -634,14 +935,57 @@ def get_notif(x_user_id: Optional[int] = Header(default=None, alias="X-User-Id")
 
     return mapped
 
+# --- ADD NOTIFICATION ---
+
+@app.post("/notifications")
+def add_notification(
+    payload: NotificationCreateRequest,
+    x_user_id: Optional[int] = Header(default=None, alias="X-User-Id"),
+):
+    user_id = resolve_current_user_id(x_user_id)
+
+    with get_conn() as conn:
+        insert_notification(
+            conn,
+            user_id=user_id,
+            tipo=payload.tipo,
+            descripcion=payload.descripcion,
+            id_reserva=payload.id_reserva,
+        )
+        conn.commit()
+
+    return {"success": True}
+
+@app.patch("/notifications/read-all")
+def mark_all_notifications_read(
+    x_user_id: Optional[int] = Header(default=None, alias="X-User-Id"),
+):
+    user_id = resolve_current_user_id(x_user_id)
+
+    with get_conn() as conn:
+        conn.execute(
+            """
+            UPDATE notificacion
+            SET leida = 1
+            WHERE id_usuario = ? AND leida = 0
+            """,
+            (user_id,),
+        )
+        conn.commit()
+
+    return {"success": True}
+
+
+# --- ENDPOINTS DE PAGOS ---
 
 @app.get("/payments/methods")
 def get_tarjetas(x_user_id: Optional[int] = Header(default=None, alias="X-User-Id")):
     user_id = resolve_current_user_id(x_user_id)
     with get_conn() as conn:
+        # Buscamos el tipo de pago actual del usuario
         row = conn.execute(
             """
-            SELECT u.id_tipo_pago, tp.tipo
+            SELECT u.id_tipo_pago, tp.tipo 
             FROM usuario u
             JOIN tipo_pago tp ON tp.id = u.id_tipo_pago
             WHERE u.id=?
@@ -649,37 +993,37 @@ def get_tarjetas(x_user_id: Optional[int] = Header(default=None, alias="X-User-I
             (user_id,),
         ).fetchone()
 
-    if not row:
+    if not row or row["id_tipo_pago"] is None:
         return []
 
-    numero = "**** 5678" if row["tipo"] == "tarjeta" else "Método en efectivo"
-    marca = "Tarjeta" if row["tipo"] == "tarjeta" else "Efectivo"
-    return [{"id": row["id_tipo_pago"], "numero": numero, "marca": marca}]
-
+    # Devolvemos un formato que Flutter entienda
+    es_tarjeta = row["tipo"].lower() == "tarjeta"
+    return [{
+        "id": row["id_tipo_pago"], 
+        "numero": "**** 8888" if es_tarjeta else "Efectivo", 
+        "marca": "Visa" if es_tarjeta else "Cash"
+    }]
 
 @app.post("/payments/methods")
 def add_tarjeta(t: TarjetaCreate, x_user_id: Optional[int] = Header(default=None, alias="X-User-Id")):
     user_id = resolve_current_user_id(x_user_id)
     with get_conn() as conn:
-        tarjeta = conn.execute("SELECT id FROM tipo_pago WHERE tipo='tarjeta'").fetchone()
+        # 1. Buscamos el ID del tipo 'tarjeta'
+        tarjeta_row = conn.execute("SELECT id FROM tipo_pago WHERE tipo='tarjeta'").fetchone()
+        
+        # 2. ACTUALIZAMOS (sobreescribimos) el método único del usuario
         conn.execute(
             "UPDATE usuario SET id_tipo_pago=? WHERE id=?",
-            (tarjeta["id"], user_id),
+            (tarjeta_row["id"], user_id),
         )
         conn.commit()
-
-    return {"id": tarjeta["id"], "numero": t.numero, "marca": "Tarjeta"}
-
+        return {"id": tarjeta_row["id"], "numero": t.numero, "marca": "Tarjeta"}
 
 @app.delete("/payments/methods/{tarjeta_id}")
 def delete_tarjeta(tarjeta_id: int, x_user_id: Optional[int] = Header(default=None, alias="X-User-Id")):
     user_id = resolve_current_user_id(x_user_id)
     with get_conn() as conn:
-        efectivo = conn.execute("SELECT id FROM tipo_pago WHERE tipo='efectivo'").fetchone()
-        conn.execute(
-            "UPDATE usuario SET id_tipo_pago=? WHERE id=? AND id_tipo_pago=?",
-            (efectivo["id"], user_id, tarjeta_id),
-        )
+        # 3. Al 'borrar', lo regresamos a Efectivo (ID 1) para no romper el NOT NULL
+        conn.execute("UPDATE usuario SET id_tipo_pago=1 WHERE id=?", (user_id,))
         conn.commit()
-
     return {"success": True}

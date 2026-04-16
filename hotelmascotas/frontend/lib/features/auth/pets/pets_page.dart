@@ -7,6 +7,7 @@ import 'pet_detail_page.dart';
 import '../history/history_page.dart'; 
 import '../notifications/notifications_page.dart';
 import '../profile/profile_page.dart';
+import '../../../services/auth_service.dart';
 
 class PetsPage extends StatefulWidget {
   const PetsPage({super.key});
@@ -34,29 +35,17 @@ class _PetsPageState extends State<PetsPage> {
 // Método para traer las mascotas de Python
   Future<void> _fetchPets() async {
     try {
-      final dio = Dio();
-      final response = await dio.get('http://10.0.2.2:8000/pets');
+      final dio = await AuthService.getDioWithAuth();
+      final response = await dio.get('/pets');
 
       if (response.statusCode == 200) {
         List<dynamic> data = response.data;
         
         setState(() {
           // Leemos TODOS los campos que vienen de la base de datos
-          pets = data.map((item) => Pet(
-            id: item['id'],
-            name: item['nombre'] ?? 'Sin nombre',
-            type: item['especie'] ?? 'Desconocido',
-            breed: item['raza'] ?? 'Desconocida',
-            age: item['edad']?.toString() ?? '0',
-            gender: item['sexo'] ?? 'No especificado',
-            weight: item['peso'] ?? 'No especificado',
-            birthDate: item['fecha_nacimiento'] ?? 'No especificado',
-            vaccines: item['vacunas'] ?? 'No especificado',          
-            allergies: item['alergias'] ?? 'Ninguna',                
-            diet: item['dieta'] ?? 'Normal',                         
-            notes: item['notas'] ?? '',
-          )).toList();
-          
+          pets = data
+                .map((item) => Pet.fromBackend(Map<String, dynamic>.from(item)))
+                .toList();
           _isLoading = false;
         });
       }
@@ -107,7 +96,7 @@ class _PetsPageState extends State<PetsPage> {
         unselectedItemColor: Colors.grey,
         onTap: (index) {
           if (index == 0) {
-            Navigator.pushReplacement(context, MaterialPageRoute(builder: (context) => const HomePage(userName: "Usuario", userId: 0)));
+            Navigator.pushReplacement(context, MaterialPageRoute(builder: (context) => const HomePage(userName: "Usuario")));
           } else if (index == 1) {
             Navigator.pushReplacement(context, MaterialPageRoute(builder: (_) => const PetsPage()));
           } else if (index == 2) {
@@ -242,7 +231,7 @@ class _PetsPageState extends State<PetsPage> {
                     pet.name,
                     style: const TextStyle(fontWeight: FontWeight.bold),
                   ),
-                  Text("${pet.type} • ${pet.breed}"),
+                  Text("${pet.type} • ${pet.breed} • ${pet.gender}"),
                   Text("Edad: ${pet.age} años", style: const TextStyle(color: Colors.grey)),
                   const SizedBox(height: 8),
                   Wrap(
@@ -250,8 +239,8 @@ class _PetsPageState extends State<PetsPage> {
                     runSpacing: 6,
                     children: [
                       _detailTag("Vacunas: ${pet.vaccines}"),
-                      _detailTag("Alergias: ${pet.allergies}"),
-                      _detailTag("Dieta: ${pet.diet}"),
+                      _detailTag("Condiciones: ${pet.conditions}"),
+                      _detailTag("Cuidados: ${pet.notes}"), 
                     ],
                   ),
                 ],

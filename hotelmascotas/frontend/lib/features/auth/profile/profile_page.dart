@@ -1,11 +1,11 @@
 import 'package:flutter/material.dart';
 import 'package:dio/dio.dart';
+import '../../../services/auth_service.dart';
 
 import 'edit_profile_page.dart';
 import 'help_page.dart';
 import 'terms_page.dart';
 import 'privacy_page.dart';
-import 'payment_methods_page.dart';
 import 'settings_page.dart';
 import '../pets/pets_page.dart';
 import '../history/history_page.dart'; 
@@ -36,8 +36,8 @@ class _ProfilePageState extends State<ProfilePage> {
   // Método asíncrono para traer los datos del backend
   Future<void> _fetchUserProfile() async {
     try {
-      final dio = Dio();
-      final response = await dio.get('http://10.0.2.2:8000/users/me');
+      final dio = await AuthService.getDioWithAuth();
+      final response = await dio.get('/users/me');
 
       if (response.statusCode == 200) {
         setState(() {
@@ -113,24 +113,26 @@ class _ProfilePageState extends State<ProfilePage> {
 
             // Opciones
             _buildOption(
-              context,
-              icon: Icons.person,
-              title: "Información Personal",
-              subtitle: "Editar perfil y datos",
+              context, 
+              icon: Icons.person, 
+              title: "Información Personal", 
+              subtitle: "Editar tus datos básicos", 
               onTap: () {
-                Navigator.push(context,
-                    MaterialPageRoute(builder: (_) => const EditProfilePage()));
-              },
-            ),
-
-            _buildOption(
-              context,
-              icon: Icons.credit_card,
-              title: "Métodos de Pago",
-              subtitle: "Gestionar tarjetas y pagos",
-              onTap: () {
-                Navigator.push(context,
-                    MaterialPageRoute(builder: (_) => const PaymentMethodsPage()));
+                // 1. Verificamos que los datos no sean nulos
+                if (_userData != null && _userData!['id'] != null) {
+                  Navigator.push(
+                    context, 
+                    MaterialPageRoute(
+                      builder: (_) => EditProfilePage(
+                        userId: _userData!['id'], // 2. Pasamos el ID extraído de la BD
+                      ),
+                    ),
+                  ).then((_) => _fetchUserProfile()); // 3. Refresca al volver
+                } else {
+                  ScaffoldMessenger.of(context).showSnackBar(
+                    const SnackBar(content: Text("Espera a que carguen los datos...")),
+                  );
+                }
               },
             ),
 
@@ -229,7 +231,7 @@ class _ProfilePageState extends State<ProfilePage> {
         unselectedItemColor: Colors.grey,
         onTap: (index) {
           if (index == 0) {
-            Navigator.pushReplacement(context, MaterialPageRoute(builder: (context) => const HomePage(userName: "Usuario", userId: 0)));
+            Navigator.pushReplacement(context, MaterialPageRoute(builder: (context) => const HomePage(userName: "Usuario")));
           } else if (index == 1) {
             Navigator.pushReplacement(context, MaterialPageRoute(builder: (_) => const PetsPage()));
           } else if (index == 2) {

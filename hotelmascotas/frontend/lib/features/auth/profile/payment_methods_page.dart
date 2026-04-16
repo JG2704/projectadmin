@@ -1,15 +1,16 @@
 import 'package:flutter/material.dart';
-import 'package:dio/dio.dart'; 
+import 'package:dio/dio.dart';
 
 class PaymentMethodsPage extends StatefulWidget {
-  const PaymentMethodsPage({super.key});
+  final int userId; // <-- Recibimos el ID desde el Perfil
+
+  const PaymentMethodsPage({super.key, required this.userId});
 
   @override
   State<PaymentMethodsPage> createState() => _PaymentMethodsPageState();
 }
 
 class _PaymentMethodsPageState extends State<PaymentMethodsPage> {
-  // Lista dinámica que vendrá del servidor
   List<dynamic> _cards = [];
   bool _isLoading = true;
 
@@ -19,96 +20,89 @@ class _PaymentMethodsPageState extends State<PaymentMethodsPage> {
     _fetchCards();
   }
 
-  // LEER TARJETAS
   Future<void> _fetchCards() async {
     try {
       final dio = Dio();
-      final response = await dio.get('http://10.0.2.2:8000/payments/methods');
-      if (response.statusCode == 200) {
+      final response = await dio.get(
+        'http://10.0.2.2:8000/payments/methods',
+        options: Options(headers: {'X-User-Id': widget.userId}),
+      );
+      if (mounted) {
         setState(() {
           _cards = response.data;
           _isLoading = false;
         });
       }
     } catch (e) {
-      debugPrint("Error: $e");
-      setState(() => _isLoading = false);
+      if (mounted) setState(() => _isLoading = false);
     }
   }
 
-  // AGREGAR TARJETA
   Future<void> _addCard() async {
-    // Simulamos la entrada de datos por ahora
-    String nuevoNumero = "**** ${1000 + _cards.length + 1}";
-    
     try {
       final dio = Dio();
-      final response = await dio.post(
+      await dio.post(
         'http://10.0.2.2:8000/payments/methods',
-        data: {"numero": nuevoNumero},
+        options: Options(headers: {'X-User-Id': widget.userId}),
+        data: {"numero": "**** 9999"}, // Simulación de nueva tarjeta
       );
-      if (response.statusCode == 200) {
-        _fetchCards(); // Refrescamos la lista
-      }
+      _fetchCards(); // Refrescamos
     } catch (e) {
       debugPrint("Error al agregar: $e");
     }
   }
 
-  // ELIMINAR TARJETA
   Future<void> _removeCard(int id) async {
     try {
       final dio = Dio();
-      final response = await dio.delete('http://10.0.2.2:8000/payments/methods/$id');
-      if (response.statusCode == 200) {
-        _fetchCards(); // Refrescamos la lista
-      }
+      await dio.delete(
+        'http://10.0.2.2:8000/payments/methods/$id',
+        options: Options(headers: {'X-User-Id': widget.userId}),
+      );
+      _fetchCards();
     } catch (e) {
       debugPrint("Error al eliminar: $e");
     }
   }
 
-  @override
+@override
   Widget build(BuildContext context) {
     return Scaffold(
-      appBar: AppBar(
-        title: const Text("Métodos de Pago"),
-        backgroundColor: Colors.purple,
-        foregroundColor: Colors.white,
-      ),
+      backgroundColor: Colors.grey[100],
+      appBar: AppBar(title: const Text("Método de Pago Actual")),
       body: _isLoading 
         ? const Center(child: CircularProgressIndicator())
         : Column(
             children: [
               Expanded(
-                child: ListView.builder(
-                  itemCount: _cards.length,
-                  itemBuilder: (context, index) {
-                    final card = _cards[index];
-                    return ListTile(
-                      leading: const Icon(Icons.credit_card, color: Colors.purple),
-                      title: Text(card['numero']),
-                      subtitle: Text(card['marca'] ?? "Tarjeta"),
-                      trailing: IconButton(
-                        icon: const Icon(Icons.delete, color: Colors.red),
-                        onPressed: () => _removeCard(card['id']),
-                      ),
-                    );
-                  },
-                ),
+                child: _cards.isEmpty 
+                  ? const Center(child: Text("No has seleccionado un método de pago."))
+                  : ListView.builder(
+                      itemCount: _cards.length,
+                      itemBuilder: (context, index) {
+                        final card = _cards[index];
+                        return ListTile(
+                          leading: const Icon(Icons.credit_card, color: Colors.purple),
+                          title: Text(card['numero'] ?? "Método Activo"),
+                          subtitle: Text(card['marca'] ?? ""),
+                          trailing: TextButton(
+                            onPressed: () => _removeCard(card['id']),
+                            child: const Text("Quitar", style: TextStyle(color: Colors.red)),
+                          ),
+                        );
+                      },
+                    ),
               ),
-              Padding(
-                padding: const EdgeInsets.all(20),
-                child: ElevatedButton.icon(
-                  style: ElevatedButton.styleFrom(
-                    backgroundColor: Colors.purple,
-                    minimumSize: const Size(double.infinity, 50),
+              
+              // Solo mostramos el botón si no hay tarjetas vinculadas
+              if (_cards.isEmpty) 
+                Padding(
+                  padding: const EdgeInsets.all(20),
+                  child: ElevatedButton(
+                    onPressed: _addCard,
+                    child: const Text("Vincular Tarjeta Visa"),
                   ),
-                  onPressed: _addCard,
-                  icon: const Icon(Icons.add, color: Colors.white),
-                  label: const Text("Agregar Nueva Tarjeta", style: TextStyle(color: Colors.white)),
                 ),
-              ),
             ],
           ),
     );

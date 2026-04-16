@@ -18,7 +18,7 @@ List<Map<String, dynamic>> reservations = [
   {
     "name": "Luna",
     "room": "Habitación 103",
-    "type": "Premium",
+    "type": "Especial",
     "date": "1 Feb - 5 Feb 2026",
     "status": "Completada",
     "total": "\$500.00"
