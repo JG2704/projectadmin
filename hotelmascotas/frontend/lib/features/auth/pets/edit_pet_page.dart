@@ -152,8 +152,8 @@ class _EditPetPageState extends State<EditPetPage> {
           children: [
             _sectionCard("Información General", [
               _input("Nombre", nameController),
-              _input("Especie", speciesController),
-              _input("Raza", breedController),
+              _input("Especie *", speciesController),
+              _input("Raza *", breedController),
               _input("Edad", ageController, keyboardType: TextInputType.number),
               _input("Tamaño (cm)", sizeController,
                   keyboardType: TextInputType.number),

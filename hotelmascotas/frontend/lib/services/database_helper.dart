@@ -665,9 +665,48 @@ class DatabaseHelper {
   // MASCOTA
   // =========================
 
+  Future<int> _ensureTipoMascota({
+    required String especie,
+    required String raza,
+  }) async {
+    final db = await database;
+    final especieNormalizada = especie.trim().toLowerCase();
+    final razaNormalizada = raza.trim().toLowerCase();
+
+    final existente = await db.query(
+      'tipo_mascota',
+      columns: ['id'],
+      where: 'especie = ? AND raza = ?',
+      whereArgs: [especieNormalizada, razaNormalizada],
+      limit: 1,
+    );
+
+    if (existente.isNotEmpty) {
+      return existente.first['id'] as int;
+    }
+
+    return db.insert('tipo_mascota', {
+      'especie': especieNormalizada,
+      'raza': razaNormalizada,
+    });
+  }
+
   Future<int> insertMascota(Map<String, dynamic> data) async {
     final db = await database;
-    return db.insert('mascota', data);
+    final payload = Map<String, dynamic>.from(data);
+    final especie = (payload.remove('especie') ?? '').toString().trim();
+    final raza = (payload.remove('raza') ?? '').toString().trim();
+
+    if (especie.isEmpty || raza.isEmpty) {
+      throw ArgumentError(
+        'Los campos especie y raza son obligatorios para crear la mascota.',
+      );
+    }
+
+    final idTipoMascota = await _ensureTipoMascota(especie: especie, raza: raza);
+    payload['id_tipo_mascota'] = idTipoMascota;
+
+    return db.insert('mascota', payload);
   }
 
   Future<List<Map<String, dynamic>>> getMascotasByUsuario(int usuarioId) async {
@@ -688,9 +727,25 @@ class DatabaseHelper {
 
   Future<int> updateMascota(int mascotaId, Map<String, dynamic> data) async {
     final db = await database;
+    final payload = Map<String, dynamic>.from(data);
+
+    final especie = payload.remove('especie')?.toString().trim();
+    final raza = payload.remove('raza')?.toString().trim();
+
+    if (especie != null || raza != null) {
+      if (especie == null || especie.isEmpty || raza == null || raza.isEmpty) {
+        throw ArgumentError(
+          'Para actualizar tipo de mascota debes enviar especie y raza.',
+        );
+      }
+
+      final idTipoMascota = await _ensureTipoMascota(especie: especie, raza: raza);
+      payload['id_tipo_mascota'] = idTipoMascota;
+    }
+
     return db.update(
       'mascota',
-      data,
+      payload,
       where: 'id = ?',
       whereArgs: [mascotaId],
     );
