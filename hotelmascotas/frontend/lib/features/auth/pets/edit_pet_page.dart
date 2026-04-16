@@ -1,6 +1,6 @@
 import 'package:flutter/material.dart';
-import 'package:dio/dio.dart';
 import '../../../models/pet_model.dart';
+import '../../../services/auth_service.dart';
 
 class EditPetPage extends StatefulWidget {
   final Pet pet;
@@ -13,6 +13,8 @@ class EditPetPage extends StatefulWidget {
 
 class _EditPetPageState extends State<EditPetPage> {
   late TextEditingController nameController;
+  late TextEditingController speciesController;
+  late TextEditingController breedController;
   late TextEditingController ageController;
   late TextEditingController sizeController;
   late TextEditingController vacunacionController;
@@ -21,7 +23,6 @@ class _EditPetPageState extends State<EditPetPage> {
   late TextEditingController cuidadosController;
 
   int? sexo;
-
   bool _isLoading = false;
 
   @override
@@ -29,61 +30,92 @@ class _EditPetPageState extends State<EditPetPage> {
     super.initState();
 
     nameController = TextEditingController(text: widget.pet.name);
+    speciesController = TextEditingController(text: widget.pet.type);
+    breedController = TextEditingController(text: widget.pet.breed);
     ageController = TextEditingController(text: widget.pet.age);
+    sizeController = TextEditingController(text: widget.pet.size);
+    vacunacionController = TextEditingController(text: widget.pet.vaccines);
+    condicionController = TextEditingController(text: widget.pet.condition);
+    contratoController = TextEditingController(text: widget.pet.contract);
+    cuidadosController = TextEditingController(text: widget.pet.specialCare);
 
-    sizeController = TextEditingController(text: widget.pet.size ?? '');
-    vacunacionController = TextEditingController(text: widget.pet.vaccines ?? '');
-    condicionController = TextEditingController(text: widget.pet.condition ?? '');
-    contratoController = TextEditingController(text: widget.pet.contract ?? '');
-    cuidadosController = TextEditingController(text: widget.pet.specialCare ?? '');
+    sexo = widget.pet.genderInt;
+  }
 
-    sexo = widget.pet.genderInt; // 0 o 1
+  @override
+  void dispose() {
+    nameController.dispose();
+    speciesController.dispose();
+    breedController.dispose();
+    ageController.dispose();
+    sizeController.dispose();
+    vacunacionController.dispose();
+    condicionController.dispose();
+    contratoController.dispose();
+    cuidadosController.dispose();
+    super.dispose();
   }
 
   Future<void> _updatePetInBackend() async {
-    if (nameController.text.trim().isEmpty) {
+    if (nameController.text.trim().isEmpty ||
+        speciesController.text.trim().isEmpty ||
+        breedController.text.trim().isEmpty) {
       ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text("El nombre es obligatorio")),
+        const SnackBar(
+          content: Text("Nombre, especie y raza son obligatorios"),
+        ),
       );
       return;
     }
 
-    setState(() {
-      _isLoading = true;
-    });
+    setState(() => _isLoading = true);
 
     try {
-      final dio = Dio();
+      final dio = await AuthService.getDioWithAuth();
       final petId = widget.pet.id;
 
       if (petId == null) throw Exception("ID inválido");
 
       final response = await dio.put(
-        'http://10.0.2.2:8000/pets/$petId',
+        '/pets/$petId',
         data: {
           "nombre": nameController.text.trim(),
+          "especie": speciesController.text.trim(),
+          "raza": breedController.text.trim(),
           "edad": int.tryParse(ageController.text.trim()) ?? 0,
           "sexo": sexo,
           "tamaño": double.tryParse(sizeController.text.trim()),
-          "vacunacion": vacunacionController.text.trim(),
-          "condicion": condicionController.text.trim(),
-          "contrato": contratoController.text.trim(),
-          "cuidados_especiales": cuidadosController.text.trim(),
-          "id_tipo_mascota": 1,
+          "vacunacion": vacunacionController.text.trim().isEmpty
+              ? "No especificado"
+              : vacunacionController.text.trim(),
+          "condicion": condicionController.text.trim().isEmpty
+              ? "Desconocida"
+              : condicionController.text.trim(),
+          "contrato": contratoController.text.trim().isEmpty
+              ? "No definido"
+              : contratoController.text.trim(),
+          "cuidados_especiales": cuidadosController.text.trim().isEmpty
+              ? "Ninguno"
+              : cuidadosController.text.trim(),
           "id_veterinario": null
         },
       );
 
       if (response.statusCode == 200) {
-        // Actualizar objeto local
-        widget.pet.name = nameController.text.trim();
-        widget.pet.age = ageController.text.trim();
-        widget.pet.size = sizeController.text.trim();
-        widget.pet.vaccines = vacunacionController.text.trim();
-        widget.pet.condition = condicionController.text.trim();
-        widget.pet.contract = contratoController.text.trim();
-        widget.pet.specialCare = cuidadosController.text.trim();
-        widget.pet.genderInt = sexo;
+        final updated =
+            Pet.fromBackend(Map<String, dynamic>.from(response.data));
+
+        widget.pet.name = updated.name;
+        widget.pet.type = updated.type;
+        widget.pet.breed = updated.breed;
+        widget.pet.age = updated.age;
+        widget.pet.gender = updated.gender;
+        widget.pet.genderInt = updated.genderInt;
+        widget.pet.size = updated.size;
+        widget.pet.vaccines = updated.vaccines;
+        widget.pet.condition = updated.condition;
+        widget.pet.contract = updated.contract;
+        widget.pet.specialCare = updated.specialCare;
 
         if (!mounted) return;
 
@@ -93,19 +125,15 @@ class _EditPetPageState extends State<EditPetPage> {
 
         Navigator.pop(context, true);
       }
-    } on DioException catch (e) {
-      debugPrint("Error: ${e.message}");
+    } catch (e) {
+      debugPrint("Error al actualizar mascota: $e");
       if (!mounted) return;
 
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(content: Text("Error al actualizar")),
       );
     } finally {
-      if (mounted) {
-        setState(() {
-          _isLoading = false;
-        });
-      }
+      if (mounted) setState(() => _isLoading = false);
     }
   }
 
@@ -124,9 +152,11 @@ class _EditPetPageState extends State<EditPetPage> {
           children: [
             _sectionCard("Información General", [
               _input("Nombre", nameController),
+              _input("Especie", speciesController),
+              _input("Raza", breedController),
               _input("Edad", ageController, keyboardType: TextInputType.number),
-              _input("Tamaño (cm)", sizeController, keyboardType: TextInputType.number),
-
+              _input("Tamaño (cm)", sizeController,
+                  keyboardType: TextInputType.number),
               Row(
                 children: [
                   const Text("Sexo: "),
@@ -147,19 +177,15 @@ class _EditPetPageState extends State<EditPetPage> {
                 ],
               ),
             ]),
-
             _sectionCard("Información Médica", [
               _input("Vacunación", vacunacionController, maxLines: 2),
               _input("Condición", condicionController, maxLines: 2),
             ]),
-
             _sectionCard("Otros", [
               _input("Contrato", contratoController),
               _input("Cuidados especiales", cuidadosController, maxLines: 2),
             ]),
-
             const SizedBox(height: 20),
-
             SizedBox(
               width: double.infinity,
               height: 50,
@@ -167,7 +193,8 @@ class _EditPetPageState extends State<EditPetPage> {
                 style: ElevatedButton.styleFrom(
                   backgroundColor: Colors.purple,
                   shape: RoundedRectangleBorder(
-                      borderRadius: BorderRadius.circular(10)),
+                    borderRadius: BorderRadius.circular(10),
+                  ),
                 ),
                 onPressed: _isLoading ? null : _updatePetInBackend,
                 child: _isLoading

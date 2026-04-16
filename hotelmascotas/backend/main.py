@@ -47,19 +47,32 @@ class UsuarioRegister(BaseModel):
 
 class MascotaBase(BaseModel):
     nombre: str
+    especie: str
+    raza: str
     edad: int
-    sexo: Optional[int] = None  # 0 = macho, 1 = hembra
+    sexo: Optional[int] = None
     tamaño: Optional[float] = None
     vacunacion: Optional[str] = "No especificado"
     condicion: Optional[str] = "Desconocida"
     contrato: Optional[str] = "No definido"
     cuidados_especiales: Optional[str] = "Ninguno"
-    id_tipo_mascota: int
     id_veterinario: Optional[int] = None
 
 
-class MascotaResponse(MascotaBase):
+class MascotaResponse(BaseModel):
     id: int
+    nombre: str
+    especie: str = "Desconocido"
+    raza: str = "Desconocida"
+    edad: int
+    sexo: str = "No especificado"
+    tamaño: str = "No especificado"
+    vacunacion: str = "No especificado"
+    condicion: str = "Desconocida"
+    contrato: str = "No definido"
+    cuidados_especiales: str = "Ninguno"
+    id_tipo_mascota: Optional[int] = None
+    id_veterinario: Optional[int] = None
 
 
 class ReservaCreateRequest(BaseModel):
@@ -110,10 +123,14 @@ def table_exists(conn: sqlite3.Connection, table_name: str) -> bool:
     return row is not None
 
 
-def normalize_sex_to_db(sex: Optional[str]) -> Optional[int]:
-    if not sex:
+def normalize_sex_to_db(sex: Optional[Any]) -> Optional[int]:
+    if sex is None or sex == "":
         return None
-    lowered = sex.strip().lower()
+
+    if isinstance(sex, int):
+        return sex if sex in (0, 1) else None
+
+    lowered = str(sex).strip().lower()
     if lowered in {"macho", "male", "m", "0"}:
         return 0
     if lowered in {"hembra", "female", "f", "1"}:
@@ -189,25 +206,26 @@ def serialize_pet_row(conn: sqlite3.Connection, row: sqlite3.Row) -> Dict[str, A
         (row["id"],),
     ).fetchall()
 
-    needs = {
-        "vacunas": row["vacunacion"] or "No especificado",
-        "cuidados_especiales": row["cuidados_especiales"] if "cuidados_especiales" in row.keys() else "Ninguno"
-    }
+    vacunas = row["vacunacion"] if "vacunacion" in row.keys() and row["vacunacion"] else "No especificado"
 
     for item in needs_rows:
         if item["tipo"] == "vacuna":
-            needs["vacunas"] = item["descripcion"]
+            vacunas = item["descripcion"]
 
     return {
         "id": row["id"],
         "nombre": row["nombre"],
+        "especie": row["especie"] if "especie" in row.keys() and row["especie"] else "Desconocido",
+        "raza": row["raza"] if "raza" in row.keys() and row["raza"] else "Desconocida",
         "edad": row["edad"] if row["edad"] is not None else 0,
         "sexo": sex_to_label(row["sexo"]),
         "tamaño": size_to_label(row["tamaño"]),
-        "vacunacion": needs["vacunas"],
-        "condicion": row["condicion"] or "Desconocida",
-        "contrato": row["contrato"] or "No definido",
-        "cuidados_especiales": row["cuidados_especiales"] if "cuidados_especiales" in row.keys() else "Ninguno",
+        "vacunacion": vacunas,
+        "condicion": row["condicion"] if "condicion" in row.keys() and row["condicion"] else "Desconocida",
+        "contrato": row["contrato"] if "contrato" in row.keys() and row["contrato"] else "No definido",
+        "cuidados_especiales": row["cuidados_especiales"] if "cuidados_especiales" in row.keys() and row["cuidados_especiales"] else "Ninguno",
+        "id_tipo_mascota": row["id_tipo_mascota"] if "id_tipo_mascota" in row.keys() else None,
+        "id_veterinario": row["id_veterinario"] if "id_veterinario" in row.keys() else None,
     }
 
 
@@ -412,18 +430,23 @@ def get_mascotas(
         rows = conn.execute(
             """
             SELECT 
-                id,
-                nombre,
-                edad,
-                sexo,
-                tamaño,
-                vacunacion,
-                condicion,
-                contrato,
-                cuidados_especiales
-            FROM mascota
-            WHERE id_usuario=?
-            ORDER BY id DESC
+                m.id,
+                m.nombre,
+                m.edad,
+                m.sexo,
+                m.tamaño,
+                m.vacunacion,
+                m.condicion,
+                m.contrato,
+                m.cuidados_especiales,
+                m.id_tipo_mascota,
+                m.id_veterinario,
+                tm.especie,
+                tm.raza
+            FROM mascota m
+            LEFT JOIN tipo_mascota tm ON tm.id = m.id_tipo_mascota
+            WHERE m.id_usuario=?
+            ORDER BY m.id DESC
             """,
             (user_id,),
         ).fetchall()
@@ -438,6 +461,8 @@ def create_mascota(
     user_id = resolve_current_user_id(x_user_id)
 
     with get_conn() as conn:
+        tipo_mascota_id = ensure_tipo_mascota(conn, m.especie, m.raza)
+
         cur = conn.execute(
             """
             INSERT INTO mascota (
@@ -456,7 +481,7 @@ def create_mascota(
                 m.contrato,
                 m.cuidados_especiales,
                 user_id,
-                m.id_tipo_mascota,
+                tipo_mascota_id,
                 m.id_veterinario,
             ),
         )
@@ -466,9 +491,13 @@ def create_mascota(
 
         row = conn.execute(
             """
-            SELECT id, nombre, edad, sexo, tamaño, vacunacion, condicion, contrato, cuidados_especiales
-            FROM mascota
-            WHERE id=?
+            SELECT 
+                m.id, m.nombre, m.edad, m.sexo, m.tamaño, m.vacunacion, m.condicion,
+                m.contrato, m.cuidados_especiales, m.id_tipo_mascota, m.id_veterinario,
+                tm.especie, tm.raza
+            FROM mascota m
+            LEFT JOIN tipo_mascota tm ON tm.id = m.id_tipo_mascota
+            WHERE m.id=?
             """,
             (mascota_id,),
         ).fetchone()
@@ -493,6 +522,8 @@ def update_mascota(
         if not existing:
             raise HTTPException(status_code=404, detail="Mascota no encontrada")
 
+        tipo_mascota_id = ensure_tipo_mascota(conn, m.especie, m.raza)
+
         conn.execute(
             """
             UPDATE mascota
@@ -509,7 +540,7 @@ def update_mascota(
                 m.condicion,
                 m.contrato,
                 m.cuidados_especiales,
-                m.id_tipo_mascota,
+                tipo_mascota_id,
                 m.id_veterinario,
                 pet_id,
             ),
@@ -519,9 +550,13 @@ def update_mascota(
 
         row = conn.execute(
             """
-            SELECT id, nombre, edad, sexo, tamaño, vacunacion, condicion, contrato, cuidados_especiales
-            FROM mascota
-            WHERE id=?
+            SELECT 
+                m.id, m.nombre, m.edad, m.sexo, m.tamaño, m.vacunacion, m.condicion,
+                m.contrato, m.cuidados_especiales, m.id_tipo_mascota, m.id_veterinario,
+                tm.especie, tm.raza
+            FROM mascota m
+            LEFT JOIN tipo_mascota tm ON tm.id = m.id_tipo_mascota
+            WHERE m.id=?
             """,
             (pet_id,),
         ).fetchone()

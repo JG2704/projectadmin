@@ -1,6 +1,6 @@
 import 'package:flutter/material.dart';
-import 'package:dio/dio.dart';
 import '../../../models/pet_model.dart';
+import '../../../services/auth_service.dart';
 
 class AddPetForm extends StatefulWidget {
   const AddPetForm({super.key});
@@ -11,6 +11,8 @@ class AddPetForm extends StatefulWidget {
 
 class _AddPetFormState extends State<AddPetForm> {
   final TextEditingController nameController = TextEditingController();
+  final TextEditingController speciesController = TextEditingController();
+  final TextEditingController breedController = TextEditingController();
   final TextEditingController ageController = TextEditingController();
   final TextEditingController sizeController = TextEditingController();
   final TextEditingController vacunacionController = TextEditingController();
@@ -18,30 +20,56 @@ class _AddPetFormState extends State<AddPetForm> {
   final TextEditingController contratoController = TextEditingController();
   final TextEditingController cuidadosController = TextEditingController();
 
-  int? sexo; // 0 = macho, 1 = hembra
-
+  int? sexo;
   bool _isLoading = false;
 
+  @override
+  void dispose() {
+    nameController.dispose();
+    speciesController.dispose();
+    breedController.dispose();
+    ageController.dispose();
+    sizeController.dispose();
+    vacunacionController.dispose();
+    condicionController.dispose();
+    contratoController.dispose();
+    cuidadosController.dispose();
+    super.dispose();
+  }
+
   Future<void> _savePetToBackend() async {
-    // VALIDACIÓN
-    if (nameController.text.isEmpty) {
+    if (nameController.text.trim().isEmpty) {
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(content: Text("El nombre es obligatorio")),
       );
       return;
     }
 
-    setState(() {
-      _isLoading = true;
-    });
+    if (speciesController.text.trim().isEmpty) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text("La especie es obligatoria")),
+      );
+      return;
+    }
+
+    if (breedController.text.trim().isEmpty) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text("La raza es obligatoria")),
+      );
+      return;
+    }
+
+    setState(() => _isLoading = true);
 
     try {
-      final dio = Dio();
+      final dio = await AuthService.getDioWithAuth();
 
       final response = await dio.post(
-        'http://10.0.2.2:8000/pets',
+        '/pets',
         data: {
           "nombre": nameController.text.trim(),
+          "especie": speciesController.text.trim(),
+          "raza": breedController.text.trim(),
           "edad": int.tryParse(ageController.text.trim()) ?? 0,
           "sexo": sexo,
           "tamaño": double.tryParse(sizeController.text.trim()),
@@ -57,24 +85,19 @@ class _AddPetFormState extends State<AddPetForm> {
           "cuidados_especiales": cuidadosController.text.trim().isEmpty
               ? "Ninguno"
               : cuidadosController.text.trim(),
-          "id_tipo_mascota": 1, // ⚠️ temporal (puedes hacerlo dinámico luego)
           "id_veterinario": null
         },
       );
 
-      if (response.statusCode == 200) {
-        final savedPet = Pet(
-          name: response.data['nombre'],
-          type: "N/A",
-          breed: "N/A",
-          age: response.data['edad'].toString(),
-        );
+      if (response.statusCode == 200 || response.statusCode == 201) {
+        final savedPet =
+            Pet.fromBackend(Map<String, dynamic>.from(response.data));
 
         if (!mounted) return;
         Navigator.pop(context, savedPet);
       }
-    } on DioException catch (e) {
-      debugPrint("Error: ${e.message}");
+    } catch (e) {
+      debugPrint("Error al guardar mascota: $e");
       if (!mounted) return;
 
       ScaffoldMessenger.of(context).showSnackBar(
@@ -84,11 +107,7 @@ class _AddPetFormState extends State<AddPetForm> {
         ),
       );
     } finally {
-      if (mounted) {
-        setState(() {
-          _isLoading = false;
-        });
-      }
+      if (mounted) setState(() => _isLoading = false);
     }
   }
 
@@ -99,7 +118,6 @@ class _AddPetFormState extends State<AddPetForm> {
       child: SingleChildScrollView(
         child: Column(
           children: [
-            // HEADER
             Row(
               mainAxisAlignment: MainAxisAlignment.spaceBetween,
               children: [
@@ -113,21 +131,25 @@ class _AddPetFormState extends State<AddPetForm> {
                 )
               ],
             ),
-
             const SizedBox(height: 15),
-
-            // INPUTS
-            _input("Nombre", "Nombre de la mascota", nameController, TextInputType.text),
+            _input("Nombre", "Nombre de la mascota", nameController,
+                TextInputType.text),
+            _input("Especie", "Ej: perro, gato, conejo", speciesController,
+                TextInputType.text),
+            _input("Raza", "Ej: golden retriever, persa", breedController,
+                TextInputType.text),
             _input("Edad", "Años", ageController, TextInputType.number),
-            _input("Tamaño", "Ej: 45 (cm)", sizeController, TextInputType.number),
-            _input("Vacunación", "Estado de vacunas", vacunacionController, TextInputType.text),
-            _input("Condición", "Estado de salud", condicionController, TextInputType.text),
-            _input("Contrato", "Tipo de contrato", contratoController, TextInputType.text),
-            _input("Cuidados especiales", "Opcional", cuidadosController, TextInputType.text),
-
+            _input("Tamaño", "Ej: 45 (cm)", sizeController,
+                TextInputType.number),
+            _input("Vacunación", "Estado de vacunas", vacunacionController,
+                TextInputType.text),
+            _input("Condición", "Estado de salud", condicionController,
+                TextInputType.text),
+            _input("Contrato", "Tipo de contrato", contratoController,
+                TextInputType.text),
+            _input("Cuidados especiales", "Opcional", cuidadosController,
+                TextInputType.text),
             const SizedBox(height: 10),
-
-            // SEXO
             Row(
               children: [
                 const Text("Sexo: "),
@@ -147,10 +169,7 @@ class _AddPetFormState extends State<AddPetForm> {
                 )
               ],
             ),
-
             const SizedBox(height: 20),
-
-            // BOTONES
             Row(
               children: [
                 Expanded(
@@ -171,7 +190,9 @@ class _AddPetFormState extends State<AddPetForm> {
                             width: 20,
                             height: 20,
                             child: CircularProgressIndicator(
-                                color: Colors.white, strokeWidth: 2),
+                              color: Colors.white,
+                              strokeWidth: 2,
+                            ),
                           )
                         : const Text("Agregar"),
                   ),
@@ -184,7 +205,8 @@ class _AddPetFormState extends State<AddPetForm> {
     );
   }
 
-  Widget _input(String label, String hint, TextEditingController controller, TextInputType keyboardType) {
+  Widget _input(String label, String hint, TextEditingController controller,
+      TextInputType keyboardType) {
     return Padding(
       padding: const EdgeInsets.only(bottom: 15),
       child: Column(

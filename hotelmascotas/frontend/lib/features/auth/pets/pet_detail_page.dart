@@ -89,7 +89,7 @@ class _PetDetailPageState extends State<PetDetailPage> {
                 _sectionCard(
                   "Información de Salud",
                   [
-                    _row("Vacunas", widget.pet.vaccines),
+                    _row("Vacunas", widget.pet.vaccines ?? "No especificado"),
                     _row("Alergias", widget.pet.allergies),
                   ],
                   icon: Icons.info_outline,

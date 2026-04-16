@@ -67,7 +67,7 @@ CREATE TABLE mascota (
     edad INTEGER,
     sexo INTEGER CHECK (sexo IN (0, 1) OR sexo IS NULL),
     tamaño REAL,
-    vacunacion TEXT
+    vacunacion TEXT,
     condicion TEXT,
     contrato TEXT,
     cuidados_especiales TEXT,
