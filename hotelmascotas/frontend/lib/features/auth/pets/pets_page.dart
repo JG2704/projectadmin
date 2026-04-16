@@ -43,20 +43,9 @@ class _PetsPageState extends State<PetsPage> {
         
         setState(() {
           // Leemos TODOS los campos que vienen de la base de datos
-          pets = data.map((item) => Pet(
-            id: item['id'],
-            name: item['nombre'] ?? 'Sin nombre',
-            type: item['especie'] ?? 'Desconocido',
-            breed: item['raza'] ?? 'Desconocida',
-            age: item['edad']?.toString() ?? '0',
-            gender: item['sexo'] ?? 'No especificado',
-            weight: item['peso'] ?? 'No especificado',
-            birthDate: item['fecha_nacimiento'] ?? 'No especificado',
-            vaccines: item['vacunas'] ?? 'No especificado',          
-            allergies: item['alergias'] ?? 'Ninguna',                
-            diet: item['dieta'] ?? 'Normal',                         
-            notes: item['notas'] ?? '',
-          )).toList();
+          pets = data
+                .map((item) => Pet.fromBackend(Map<String, dynamic>.from(item)))
+                .toList();
           
           _isLoading = false;
         });

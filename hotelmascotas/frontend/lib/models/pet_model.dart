@@ -4,8 +4,19 @@ class Pet {
   String name;
   String age;
 
+  // Campos usados por las pantallas de mascotas
+  String type;
+  String breed;
+  String gender;
+  String weight;
+  String birthDate;
+  String allergies;
+  String diet;
+  String notes;
+
+  // Campos usados por formularios / edición
   String? size;
-  String? vaccines;
+  String vaccines;
   String? condition;
   String? contract;
   String? specialCare;
@@ -16,6 +27,14 @@ class Pet {
     this.id,
     required this.name,
     required this.age,
+    this.type = "Desconocido",
+    this.breed = "Desconocida",
+    this.gender = "No especificado",
+    this.weight = "No especificado",
+    this.birthDate = "No especificado",
+    this.allergies = "Ninguna",
+    this.diet = "Normal",
+    this.notes = "",
     this.size,
     this.vaccines = "No especificado",
     this.condition = "Desconocida",
@@ -24,9 +43,57 @@ class Pet {
     this.genderInt,
   });
 
+  factory Pet.fromBackend(Map<String, dynamic> item) {
+    final int? sexo = item['sexo'] is int
+        ? item['sexo'] as int
+        : int.tryParse('${item['sexo'] ?? ''}');
+
+    final String genero = sexo == 0
+        ? "Macho"
+        : sexo == 1
+            ? "Hembra"
+            : "No especificado";
+
+    return Pet(
+      id: item['id'] as int?,
+      name: item['nombre']?.toString() ?? "Sin nombre",
+      age: (item['edad'] ?? 0).toString(),
+      type: item['especie']?.toString() ?? "Desconocido",
+      breed: item['raza']?.toString() ?? "Desconocida",
+      gender: genero,
+      weight: item['peso']?.toString() ?? "No especificado",
+      birthDate: item['fecha_nacimiento']?.toString() ?? "No especificado",
+      allergies: item['alergias']?.toString() ?? "Ninguna",
+      diet: item['dieta']?.toString() ?? "Normal",
+      notes: item['notas']?.toString() ?? "",
+      size: item['altura']?.toString() ??
+          item['tamaño']?.toString() ??
+          item['tamano']?.toString(),
+      vaccines: item['vacunacion']?.toString() ??
+          item['vacunas']?.toString() ??
+          "No especificado",
+      condition: item['condicion']?.toString() ?? "Desconocida",
+      contract: item['contrato']?.toString() ?? "No definido",
+      specialCare:
+          item['cuidados_especiales']?.toString() ?? "Ninguno",
+      genderInt: sexo,
+    );
+  }
+
   String get genderLabel {
+    if (gender.isNotEmpty) return gender;
     if (genderInt == 0) return "Macho";
     if (genderInt == 1) return "Hembra";
+    return "No especificado";
+  }
+
+  String get displayWeight {
+    if (weight.isNotEmpty && weight != "No especificado") {
+      return weight;
+    }
+    if (size != null && size!.isNotEmpty) {
+      return size!;
+    }
     return "No especificado";
   }
 }

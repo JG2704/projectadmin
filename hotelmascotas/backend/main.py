@@ -45,21 +45,36 @@ class UsuarioRegister(BaseModel):
     password: str
 
 
-class MascotaBase(BaseModel):
+class MascotaCreate(BaseModel):
+    nombre: str
+    especie: str
+    raza: str
+    edad: int
+    sexo: Optional[int] = None
+    peso: Optional[float] = None
+    vacunas: Optional[str] = "No especificado"
+    alergias: Optional[str] = "Ninguna"
+    condicion: Optional[str] = "Desconocida"
+    contrato: Optional[str] = "No definido"
+    cuidados_especiales: Optional[str] = "Ninguno"
+    notas: Optional[str] = ""
+    id_veterinario: Optional[int] = None
+
+
+class MascotaResponse(BaseModel):
+    id: int
     nombre: str
     edad: int
-    sexo: Optional[int] = None  # 0 = macho, 1 = hembra
-    tamaño: Optional[float] = None
+    tipo: Optional[str] = "Desconocido"
+    raza: Optional[str] = "Desconocida"
+    sexo: Optional[str] = "No especificado"
+    tamaño: Optional[str] = "No especificado"
     vacunacion: Optional[str] = "No especificado"
     condicion: Optional[str] = "Desconocida"
     contrato: Optional[str] = "No definido"
     cuidados_especiales: Optional[str] = "Ninguno"
-    id_tipo_mascota: int
     id_veterinario: Optional[int] = None
 
-
-class MascotaResponse(MascotaBase):
-    id: int
 
 
 class ReservaCreateRequest(BaseModel):
@@ -110,10 +125,14 @@ def table_exists(conn: sqlite3.Connection, table_name: str) -> bool:
     return row is not None
 
 
-def normalize_sex_to_db(sex: Optional[str]) -> Optional[int]:
-    if not sex:
+def normalize_sex_to_db(sex: Optional[Any]) -> Optional[int]:
+    if sex is None or sex == "":
         return None
-    lowered = sex.strip().lower()
+
+    if isinstance(sex, int):
+        return sex if sex in (0, 1) else None
+
+    lowered = str(sex).strip().lower()
     if lowered in {"macho", "male", "m", "0"}:
         return 0
     if lowered in {"hembra", "female", "f", "1"}:
@@ -189,14 +208,13 @@ def serialize_pet_row(conn: sqlite3.Connection, row: sqlite3.Row) -> Dict[str, A
         (row["id"],),
     ).fetchall()
 
-    needs = {
-        "vacunas": row["vacunacion"] or "No especificado",
-        "cuidados_especiales": row["cuidados_especiales"] if "cuidados_especiales" in row.keys() else "Ninguno"
-    }
+    vacunas = row["vacunacion"] if "vacunacion" in row.keys() else "No especificado"
+    if not vacunas:
+        vacunas = "No especificado"
 
     for item in needs_rows:
         if item["tipo"] == "vacuna":
-            needs["vacunas"] = item["descripcion"]
+            vacunas = item["descripcion"]
 
     return {
         "id": row["id"],
@@ -204,10 +222,12 @@ def serialize_pet_row(conn: sqlite3.Connection, row: sqlite3.Row) -> Dict[str, A
         "edad": row["edad"] if row["edad"] is not None else 0,
         "sexo": sex_to_label(row["sexo"]),
         "tamaño": size_to_label(row["tamaño"]),
-        "vacunacion": needs["vacunas"],
-        "condicion": row["condicion"] or "Desconocida",
-        "contrato": row["contrato"] or "No definido",
-        "cuidados_especiales": row["cuidados_especiales"] if "cuidados_especiales" in row.keys() else "Ninguno",
+        "vacunacion": vacunas,
+        "condicion": row["condicion"] if "condicion" in row.keys() and row["condicion"] else "Desconocida",
+        "contrato": row["contrato"] if "contrato" in row.keys() and row["contrato"] else "No definido",
+        "cuidados_especiales": row["cuidados_especiales"] if "cuidados_especiales" in row.keys() and row["cuidados_especiales"] else "Ninguno",
+        "id_tipo_mascota": row["id_tipo_mascota"] if "id_tipo_mascota" in row.keys() else None,
+        "id_veterinario": row["id_veterinario"] if "id_veterinario" in row.keys() else None,
     }
 
 
@@ -420,7 +440,9 @@ def get_mascotas(
                 vacunacion,
                 condicion,
                 contrato,
-                cuidados_especiales
+                cuidados_especiales,
+                id_tipo_mascota,
+                id_veterinario
             FROM mascota
             WHERE id_usuario=?
             ORDER BY id DESC
@@ -430,50 +452,52 @@ def get_mascotas(
 
         return [serialize_pet_row(conn, row) for row in rows]
 
-@app.post("/pets", response_model=MascotaResponse)
-def create_mascota(
-    m: MascotaBase,
-    x_user_id: Optional[int] = Header(default=None, alias="X-User-Id")
-):
+# 2. El endpoint que procesa todo
+@app.post("/pets")
+def create_mascota(m: MascotaCreate, x_user_id: Optional[int] = Header(default=None, alias="X-User-Id")):
     user_id = resolve_current_user_id(x_user_id)
-
     with get_conn() as conn:
-        cur = conn.execute(
-            """
-            INSERT INTO mascota (
-                nombre, foto, edad, sexo, tamaño, vacunacion, condicion, contrato, cuidados_especiales,
-                id_usuario, id_tipo_mascota, id_veterinario
+        # Buscamos o creamos el tipo de mascota (especie/raza)
+        tipo_row = conn.execute(
+            "SELECT id FROM tipo_mascota WHERE especie=? AND raza=?", 
+            (m.especie.lower(), m.raza.lower())
+        ).fetchone()
+
+        if not tipo_row:
+            cur = conn.execute(
+                "INSERT INTO tipo_mascota (especie, raza) VALUES (?, ?)",
+                (m.especie.lower(), m.raza.lower())
             )
-            VALUES (?, '', ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            tipo_id = cur.lastrowid
+        else:
+            tipo_id = tipo_row["id"]
+
+        # Insertamos en la tabla 'mascota' con los nombres de columna reales del schema.sql
+        # Combinamos vacunas y alergias en la columna 'notas' ya que tu tabla no tiene esas columnas
+        notas_completas = f"Vacunas: {m.vacunas} | Alergias: {m.alergias} | Notas: {m.notas}"
+        
+        conn.execute(
+            """
+            INSERT INTO mascota (nombre, edad, sexo, tamaño, vacunacion, condicion, contrato, cuidados_especiales, id_usuario, id_tipo_mascota, id_veterinario, foto)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
             """,
             (
                 m.nombre,
                 m.edad,
-                normalize_sex_to_db(m.sexo),
-                m.tamaño,
-                m.vacunacion,
+                m.sexo,
+                m.peso,
+                m.vacunas,
                 m.condicion,
                 m.contrato,
                 m.cuidados_especiales,
                 user_id,
-                m.id_tipo_mascota,
-                m.id_veterinario,
-            ),
+                tipo_id,
+                "1",
+                ""
+            )
         )
-
-        mascota_id = cur.lastrowid
         conn.commit()
-
-        row = conn.execute(
-            """
-            SELECT id, nombre, edad, sexo, tamaño, vacunacion, condicion, contrato, cuidados_especiales
-            FROM mascota
-            WHERE id=?
-            """,
-            (mascota_id,),
-        ).fetchone()
-
-        return serialize_pet_row(conn, row)
+    return {"success": True}
 
 
 @app.put("/pets/{pet_id}", response_model=MascotaResponse)
@@ -519,7 +543,9 @@ def update_mascota(
 
         row = conn.execute(
             """
-            SELECT id, nombre, edad, sexo, tamaño, vacunacion, condicion, contrato, cuidados_especiales
+            SELECT 
+                id, nombre, edad, sexo, tamaño, vacunacion, condicion, contrato,
+                cuidados_especiales, id_tipo_mascota, id_veterinario
             FROM mascota
             WHERE id=?
             """,

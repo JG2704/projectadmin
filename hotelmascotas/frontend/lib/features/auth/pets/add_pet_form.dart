@@ -11,6 +11,8 @@ class AddPetForm extends StatefulWidget {
 
 class _AddPetFormState extends State<AddPetForm> {
   final TextEditingController nameController = TextEditingController();
+  final TextEditingController tipoController = TextEditingController();
+  final TextEditingController razaController = TextEditingController();
   final TextEditingController ageController = TextEditingController();
   final TextEditingController sizeController = TextEditingController();
   final TextEditingController vacunacionController = TextEditingController();
@@ -22,73 +24,59 @@ class _AddPetFormState extends State<AddPetForm> {
 
   bool _isLoading = false;
 
-  Future<void> _savePetToBackend() async {
-    // VALIDACIÓN
-    if (nameController.text.isEmpty) {
+Future<void> _savePetToBackend() async {
+    // 1. Validamos que no envíes cosas vacías por accidente
+    if (nameController.text.isEmpty || tipoController.text.isEmpty || razaController.text.isEmpty) {
       ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text("El nombre es obligatorio")),
+        const SnackBar(content: Text("Nombre, Especie y Raza son obligatorios")),
       );
       return;
     }
 
-    setState(() {
-      _isLoading = true;
-    });
+    setState(() => _isLoading = true);
 
     try {
       final dio = Dio();
-
       final response = await dio.post(
         'http://10.0.2.2:8000/pets',
         data: {
           "nombre": nameController.text.trim(),
-          "edad": int.tryParse(ageController.text.trim()) ?? 0,
-          "sexo": sexo,
-          "tamaño": double.tryParse(sizeController.text.trim()),
-          "vacunacion": vacunacionController.text.trim().isEmpty
-              ? "No especificado"
-              : vacunacionController.text.trim(),
-          "condicion": condicionController.text.trim().isEmpty
-              ? "Desconocida"
-              : condicionController.text.trim(),
-          "contrato": contratoController.text.trim().isEmpty
-              ? "No definido"
-              : contratoController.text.trim(),
-          "cuidados_especiales": cuidadosController.text.trim().isEmpty
-              ? "Ninguno"
-              : cuidadosController.text.trim(),
-          "id_tipo_mascota": 1, // ⚠️ temporal (puedes hacerlo dinámico luego)
-          "id_veterinario": null
+          "especie": tipoController.text.trim(),
+          "raza": razaController.text.trim(),
+          "edad": int.tryParse(ageController.text) ?? 0,
+          "sexo": sexo ?? 0, // Aseguramos enviar 0 si es null
+          "peso": double.tryParse(sizeController.text) ?? 0.0,
+          "vacunas": vacunacionController.text.isEmpty ? "No especificado" : vacunacionController.text,
+          "alergias": condicionController.text.isEmpty ? "Ninguna" : condicionController.text,
+          "notas": cuidadosController.text.trim(),
         },
       );
-
-      if (response.statusCode == 200) {
-        final savedPet = Pet(
-          name: response.data['nombre'],
-          type: "N/A",
-          breed: "N/A",
-          age: response.data['edad'].toString(),
-        );
-
-        if (!mounted) return;
-        Navigator.pop(context, savedPet);
-      }
-    } on DioException catch (e) {
-      debugPrint("Error: ${e.message}");
+      
       if (!mounted) return;
-
       ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(
-          content: Text("Error al conectar con el servidor"),
-          backgroundColor: Colors.red,
+        const SnackBar(content: Text("¡Mascota registrada con éxito!"), backgroundColor: Colors.green),
+      );
+      Navigator.pop(context, true); // Cerramos el formulario
+      
+    } on DioException catch (e) {
+      // 🔥 ESTO OBLIGA A MOSTRAR EL ERROR EN PANTALLA EN VEZ DE QUEDARSE PEGADO
+      if (!mounted) return;
+      String errorMsg = e.response?.data?.toString() ?? e.message ?? "Error desconocido";
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text("Error del servidor: $errorMsg"), 
+          backgroundColor: Colors.red, 
+          duration: const Duration(seconds: 6)
         ),
       );
+    } catch (e) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text("Error en la app: $e"), backgroundColor: Colors.red),
+      );
     } finally {
-      if (mounted) {
-        setState(() {
-          _isLoading = false;
-        });
-      }
+      // 🔥 ESTO APAGA LA BOLITA PASE LO QUE PASE
+      if (mounted) setState(() => _isLoading = false); 
     }
   }
 
@@ -118,6 +106,8 @@ class _AddPetFormState extends State<AddPetForm> {
 
             // INPUTS
             _input("Nombre", "Nombre de la mascota", nameController, TextInputType.text),
+            _input("Tipo", "Ej: Perro, Gato", tipoController, TextInputType.text),
+            _input("Raza", "Ej: Labrador, Siamés", razaController, TextInputType.text),
             _input("Edad", "Años", ageController, TextInputType.number),
             _input("Tamaño", "Ej: 45 (cm)", sizeController, TextInputType.number),
             _input("Vacunación", "Estado de vacunas", vacunacionController, TextInputType.text),
