@@ -89,13 +89,8 @@ class _NotificationsPageState extends State<NotificationsPage> {
           Padding(
             padding: const EdgeInsets.only(right: 16),
             child: GestureDetector(
-              onTap: () {
-                ScaffoldMessenger.of(context).showSnackBar(
-                  const SnackBar(content: Text("Bandeja limpia")),
-                );
-                setState(() {
-                  _notifications.clear();
-                });
+              onTap: () async {
+                await _markAllAsRead();
               },
               child: const Center(
                 child: Text(

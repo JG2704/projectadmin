@@ -24,8 +24,8 @@ class _PaymentMethodsPageState extends State<PaymentMethodsPage> {
     try {
       final dio = Dio();
       final response = await dio.get(
-        //'http://10.0.2.2:8000/payments/methods',
-        'http://192.168.18.9:8000/payments/methods',
+        'http://10.0.2.2:8000/payments/methods',
+        //'http://192.168.18.9:8000/payments/methods',
         options: Options(headers: {'X-User-Id': widget.userId}),
       );
       if (mounted) {
@@ -43,8 +43,8 @@ class _PaymentMethodsPageState extends State<PaymentMethodsPage> {
     try {
       final dio = Dio();
       await dio.post(
-        //'http://10.0.2.2:8000/payments/methods',
-        'http://192.168.18.9:8000/payments/methods',
+        'http://10.0.2.2:8000/payments/methods',
+        //'http://192.168.18.9:8000/payments/methods',
         options: Options(headers: {'X-User-Id': widget.userId}),
         data: {"numero": "**** 9999"}, // Simulación de nueva tarjeta
       );
@@ -58,8 +58,8 @@ class _PaymentMethodsPageState extends State<PaymentMethodsPage> {
     try {
       final dio = Dio();
       await dio.delete(
-        //'http://10.0.2.2:8000/payments/methods/$id',
-        'http://192.168.18.9:8000/payments/methods/$id',
+        'http://10.0.2.2:8000/payments/methods/$id',
+        //'http://192.168.18.9:8000/payments/methods/$id',
         options: Options(headers: {'X-User-Id': widget.userId}),
       );
       _fetchCards();

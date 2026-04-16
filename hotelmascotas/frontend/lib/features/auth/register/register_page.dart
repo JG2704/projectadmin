@@ -72,8 +72,8 @@ class _RegisterPageState extends State<RegisterPage> {
       final dio = Dio();
 
       final response = await dio.post(
-        //'http://10.0.2.2:8000/auth/register',
-        'http://192.168.18.9:8000/auth/register',
+        'http://10.0.2.2:8000/auth/register',
+        //'http://192.168.18.9:8000/auth/register',
         data: {
           "cedula": cedula,
           "nombre": name,
