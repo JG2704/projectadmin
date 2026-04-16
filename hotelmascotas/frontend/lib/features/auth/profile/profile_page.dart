@@ -138,30 +138,6 @@ class _ProfilePageState extends State<ProfilePage> {
             ),
 
             _buildOption(
-              context, 
-              icon: Icons.credit_card, 
-              title: "Métodos de Pago", 
-              subtitle: "Gestionar tarjetas", 
-              onTap: () {
-                // Verificamos que los datos ya hayan cargado para evitar errores de nulo
-                if (_userData != null && _userData!['id'] != null) {
-                  Navigator.push(
-                    context, 
-                    MaterialPageRoute(
-                      builder: (_) => PaymentMethodsPage(
-                        userId: _userData!['id'], // <-- Aquí pasamos el ID real del usuario
-                      ),
-                    ),
-                  );
-                } else {
-                  ScaffoldMessenger.of(context).showSnackBar(
-                    const SnackBar(content: Text("Cargando datos del usuario...")),
-                  );
-                }
-              },
-            ),
-
-            _buildOption(
               context,
               icon: Icons.settings,
               title: "Configuración",
