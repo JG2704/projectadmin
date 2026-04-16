@@ -1,3 +1,5 @@
+import 'package:flutter/material.dart';
+
 class Pet {
   int? id;
 
@@ -10,7 +12,7 @@ class Pet {
   String gender;
   String weight;
   String birthDate;
-  String allergies;
+  String conditions;
   String diet;
   String notes;
 
@@ -32,7 +34,7 @@ class Pet {
     this.gender = "No especificado",
     this.weight = "No especificado",
     this.birthDate = "No especificado",
-    this.allergies = "Ninguna",
+    this.conditions = "Ninguna",
     this.diet = "Normal",
     this.notes = "",
     this.size,
@@ -44,15 +46,8 @@ class Pet {
   });
 
   factory Pet.fromBackend(Map<String, dynamic> item) {
-    final int? sexo = item['sexo'] is int
-        ? item['sexo'] as int
-        : int.tryParse('${item['sexo'] ?? ''}');
 
-    final String genero = sexo == 0
-        ? "Macho"
-        : sexo == 1
-            ? "Hembra"
-            : "No especificado";
+    debugPrint("Especie y raza recibidos del backend con tipo de datos: ${item['especie'].runtimeType} / ${item['raza'].runtimeType}");
 
     return Pet(
       id: item['id'] as int?,
@@ -60,10 +55,10 @@ class Pet {
       age: (item['edad'] ?? 0).toString(),
       type: item['especie']?.toString() ?? "Desconocido",
       breed: item['raza']?.toString() ?? "Desconocida",
-      gender: genero,
+      gender: item['sexo']?.toString() ?? "No especificado",
       weight: item['peso']?.toString() ?? "No especificado",
       birthDate: item['fecha_nacimiento']?.toString() ?? "No especificado",
-      allergies: item['alergias']?.toString() ?? "Ninguna",
+      conditions: item['conditions']?.toString() ?? "Ninguna",
       diet: item['dieta']?.toString() ?? "Normal",
       notes: item['notas']?.toString() ?? "",
       size: item['altura']?.toString() ??
@@ -76,8 +71,7 @@ class Pet {
       contract: item['contrato']?.toString() ?? "No definido",
       specialCare:
           item['cuidados_especiales']?.toString() ?? "Ninguno",
-      genderInt: sexo,
-    );
+);
   }
 
   String get genderLabel {
@@ -96,4 +90,6 @@ class Pet {
     }
     return "No especificado";
   }
+
+
 }

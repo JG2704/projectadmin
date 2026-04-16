@@ -20,7 +20,7 @@ INSERT INTO veterinario (id, nombre, telefono, correo, direccion) VALUES
 
 INSERT INTO necesidad (id, tipo) VALUES
 (1, 'vacuna'),
-(2, 'alergia'),
+(2, 'conditions'),
 (3, 'dieta');
 
 INSERT INTO hotel (id, nombre, telefono, correo, direccion) VALUES
@@ -72,7 +72,7 @@ INSERT INTO mascota (
 INSERT INTO mascota_x_necesidad (id, descripcion, id_mascota, id_necesidad) VALUES
 (1, 'Vacunas al dia', 1, 1),
 (2, 'Dieta de alimento seco premium', 1, 3),
-(3, 'Alergia al pollo', 2, 2),
+(3, 'conditions al pollo', 2, 2),
 (4, 'Verduras y pellets diariamente', 3, 3);
 
 INSERT INTO reserva (id, fecha_ingreso, fecha_salida, estancia, precio, id_mascota, id_habitacion, id_estado, id_tipo_hospedaje) VALUES

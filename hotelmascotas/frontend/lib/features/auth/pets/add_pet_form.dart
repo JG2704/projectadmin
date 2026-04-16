@@ -11,15 +11,15 @@ class AddPetForm extends StatefulWidget {
 }
 
 class _AddPetFormState extends State<AddPetForm> {
-  final TextEditingController nameController = TextEditingController();
-  final TextEditingController tipoController = TextEditingController();
-  final TextEditingController razaController = TextEditingController();
-  final TextEditingController ageController = TextEditingController();
-  final TextEditingController sizeController = TextEditingController();
-  final TextEditingController vacunacionController = TextEditingController();
-  final TextEditingController condicionController = TextEditingController();
-  final TextEditingController contratoController = TextEditingController();
-  final TextEditingController cuidadosController = TextEditingController();
+  final TextEditingController nameController = TextEditingController(text: "Nombre");
+  final TextEditingController tipoController = TextEditingController(text: "Especie");
+  final TextEditingController razaController = TextEditingController(text: "Raza");
+  final TextEditingController ageController = TextEditingController(text: "0");
+  final TextEditingController sizeController = TextEditingController(text: "0");
+  final TextEditingController vacunacionController = TextEditingController(text: "Vacunacion");
+  final TextEditingController condicionController = TextEditingController(text: "Condicion");
+  final TextEditingController contratoController = TextEditingController(text: "Contrato");
+  final TextEditingController cuidadosController = TextEditingController(text: "Cuidados Especiales");
 
   int? sexo; // 0 = macho, 1 = hembra
 
@@ -49,7 +49,7 @@ Future<void> _savePetToBackend() async {
           "sexo": sexo ?? 0, // Aseguramos enviar 0 si es null
           "peso": double.tryParse(sizeController.text) ?? 0.0,
           "vacunas": vacunacionController.text.isEmpty ? "No especificado" : vacunacionController.text,
-          "alergias": condicionController.text.isEmpty ? "Ninguna" : condicionController.text,
+          "condiciones": condicionController.text.isEmpty ? "Ninguna" : condicionController.text,
           "notas": cuidadosController.text.trim(),
         },
       );

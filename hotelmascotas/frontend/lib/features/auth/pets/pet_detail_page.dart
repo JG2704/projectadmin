@@ -15,6 +15,9 @@ class _PetDetailPageState extends State<PetDetailPage> {
 
   @override
   Widget build(BuildContext context) {
+    debugPrint("Mostrando detalles de la mascota: ${widget.pet.name} (ID: ${widget.pet.id})");
+    debugPrint("Tipo: ${widget.pet.type}, Raza: ${widget.pet.breed}, Edad: ${widget.pet.age}, Sexo: ${widget.pet.gender}");
+    debugPrint("Vacunas: ${widget.pet.vaccines}, Condiciones: ${widget.pet.conditions}, Cuidados: ${widget.pet.notes}");
     return Scaffold(
       backgroundColor: Colors.grey[100],
 
@@ -90,7 +93,7 @@ class _PetDetailPageState extends State<PetDetailPage> {
                   "Información de Salud",
                   [
                     _row("Vacunas", widget.pet.vaccines ?? "No especificado"),
-                    _row("Alergias", widget.pet.allergies),
+                    _row("condiciones", widget.pet.conditions == "" ? "Ninguna" : widget.pet.conditions),
                   ],
                   icon: Icons.info_outline,
                   iconColor: Colors.purple,

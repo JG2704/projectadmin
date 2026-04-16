@@ -46,7 +46,6 @@ class _PetsPageState extends State<PetsPage> {
           pets = data
                 .map((item) => Pet.fromBackend(Map<String, dynamic>.from(item)))
                 .toList();
-          
           _isLoading = false;
         });
       }
@@ -232,7 +231,7 @@ class _PetsPageState extends State<PetsPage> {
                     pet.name,
                     style: const TextStyle(fontWeight: FontWeight.bold),
                   ),
-                  Text("${pet.type} • ${pet.breed}"),
+                  Text("${pet.type} • ${pet.breed} • ${pet.gender}"),
                   Text("Edad: ${pet.age} años", style: const TextStyle(color: Colors.grey)),
                   const SizedBox(height: 8),
                   Wrap(
@@ -240,8 +239,8 @@ class _PetsPageState extends State<PetsPage> {
                     runSpacing: 6,
                     children: [
                       _detailTag("Vacunas: ${pet.vaccines}"),
-                      _detailTag("Alergias: ${pet.allergies}"),
-                      _detailTag("Dieta: ${pet.diet}"),
+                      _detailTag("Condiciones: ${pet.conditions}"),
+                      _detailTag("Cuidados: ${pet.notes}"), 
                     ],
                   ),
                 ],

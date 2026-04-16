@@ -7,6 +7,7 @@ import bcrypt
 from fastapi import FastAPI, Header, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
+from typing import Optional
 
 app = FastAPI(title="API Hotel de Mascotas - SQLite")
 
@@ -53,7 +54,7 @@ class MascotaCreate(BaseModel):
     sexo: Optional[int] = None
     peso: Optional[float] = None
     vacunas: Optional[str] = "No especificado"
-    alergias: Optional[str] = "Ninguna"
+    conditions: Optional[str] = "Ninguna"
     condicion: Optional[str] = "Desconocida"
     contrato: Optional[str] = "No definido"
     cuidados_especiales: Optional[str] = "Ninguno"
@@ -65,7 +66,7 @@ class MascotaResponse(BaseModel):
     id: int
     nombre: str
     edad: int
-    tipo: Optional[str] = "Desconocido"
+    especie: Optional[str] = "Desconocido"
     raza: Optional[str] = "Desconocida"
     sexo: Optional[str] = "No especificado"
     tamaño: Optional[str] = "No especificado"
@@ -75,7 +76,16 @@ class MascotaResponse(BaseModel):
     cuidados_especiales: Optional[str] = "Ninguno"
     id_veterinario: Optional[int] = None
 
-
+class MascotaUpdate(BaseModel):
+    nombre: str
+    especie: str
+    raza: str
+    edad: int
+    sexo: int
+    peso: float
+    vacunas: str
+    conditions: str
+    notas: str
 
 class ReservaCreateRequest(BaseModel):
     name: str        # pet name
@@ -220,7 +230,7 @@ def serialize_pet_row(conn: sqlite3.Connection, row: sqlite3.Row) -> Dict[str, A
         "id": row["id"],
         "nombre": row["nombre"],
         "edad": row["edad"] if row["edad"] is not None else 0,
-        "sexo": sex_to_label(row["sexo"]),
+        "sexo": ("Hembra" if row["sexo"] == 1 else "Macho") if "sexo" in row.keys() and row["sexo"] is not None else "No especificado",
         "tamaño": size_to_label(row["tamaño"]),
         "vacunacion": vacunas,
         "condicion": row["condicion"] if "condicion" in row.keys() and row["condicion"] else "Desconocida",
@@ -228,6 +238,8 @@ def serialize_pet_row(conn: sqlite3.Connection, row: sqlite3.Row) -> Dict[str, A
         "cuidados_especiales": row["cuidados_especiales"] if "cuidados_especiales" in row.keys() and row["cuidados_especiales"] else "Ninguno",
         "id_tipo_mascota": row["id_tipo_mascota"] if "id_tipo_mascota" in row.keys() else None,
         "id_veterinario": row["id_veterinario"] if "id_veterinario" in row.keys() else None,
+        "especie": row["especie"] if "especie" in row.keys() and row["especie"] else "Desconocido",
+        "raza": row["raza"] if "raza" in row.keys() and row["raza"] else "Desconocida",
     }
 
 
@@ -431,25 +443,27 @@ def get_mascotas(
     with get_conn() as conn:
         rows = conn.execute(
             """
-            SELECT 
-                id,
-                nombre,
-                edad,
-                sexo,
-                tamaño,
-                vacunacion,
-                condicion,
-                contrato,
-                cuidados_especiales,
-                id_tipo_mascota,
-                id_veterinario
-            FROM mascota
-            WHERE id_usuario=?
-            ORDER BY id DESC
+                SELECT 
+                    m.id,
+                    m.nombre,
+                    m.edad,
+                    m.sexo,
+                    m.tamaño,
+                    m.vacunacion,
+                    m.condicion,
+                    m.contrato,
+                    m.cuidados_especiales,
+                    m.id_tipo_mascota,
+                    m.id_veterinario,
+                    tm.especie,
+                    tm.raza
+                FROM mascota m
+                JOIN tipo_mascota tm ON tm.id = m.id_tipo_mascota
+                WHERE m.id_usuario=?
+                ORDER BY m.id DESC
             """,
             (user_id,),
         ).fetchall()
-
         return [serialize_pet_row(conn, row) for row in rows]
 
 # 2. El endpoint que procesa todo
@@ -471,10 +485,6 @@ def create_mascota(m: MascotaCreate, x_user_id: Optional[int] = Header(default=N
             tipo_id = cur.lastrowid
         else:
             tipo_id = tipo_row["id"]
-
-        # Insertamos en la tabla 'mascota' con los nombres de columna reales del schema.sql
-        # Combinamos vacunas y alergias en la columna 'notas' ya que tu tabla no tiene esas columnas
-        notas_completas = f"Vacunas: {m.vacunas} | Alergias: {m.alergias} | Notas: {m.notas}"
         
         conn.execute(
             """
@@ -500,59 +510,71 @@ def create_mascota(m: MascotaCreate, x_user_id: Optional[int] = Header(default=N
     return {"success": True}
 
 
-@app.put("/pets/{pet_id}", response_model=MascotaResponse)
-def update_mascota(
-    pet_id: int,
-    m: MascotaBase,
-    x_user_id: Optional[int] = Header(default=None, alias="X-User-Id")
-):
+@app.put("/pets/{pet_id}")
+def update_mascota(pet_id: int, m: MascotaCreate, x_user_id: Optional[int] = Header(default=None, alias="X-User-Id")):
     user_id = resolve_current_user_id(x_user_id)
-
     with get_conn() as conn:
-        existing = conn.execute(
-            "SELECT id FROM mascota WHERE id=? AND id_usuario=?",
-            (pet_id, user_id),
+        # 1. Verificar existencia y pertenencia
+        row = conn.execute("SELECT id FROM mascota WHERE id=? AND id_usuario=?", (pet_id, user_id)).fetchone()
+        if not row:
+            raise HTTPException(status_code=404, detail="Mascota no encontrada o no autorizada")
+
+        # 2. Lógica idéntica al Add: Buscar o crear el tipo (Especie + Raza)
+        tipo_row = conn.execute(
+            "SELECT id FROM tipo_mascota WHERE especie=? AND raza=?", 
+            (m.especie, m.raza)
+        ).fetchone()
+        
+        if tipo_row:
+            print(tipo_row["id"])
+            tipo_id = tipo_row["id"]
+        else:
+            cursor = conn.execute(
+                "INSERT INTO tipo_mascota (especie, raza) VALUES (?, ?)", 
+                (m.especie, m.raza)
+            )
+            tipo_id = cursor.lastrowid
+        print("DEBUG: Nuevo tipo_mascota creado con ID", tipo_id)
+
+        # 3. Actualizar la mascota con el tipo_id resuelto
+        print("DEBUG PET_ID:", pet_id)
+        print("DEBUG USER_ID:", user_id)
+
+        check = conn.execute(
+            "SELECT id, nombre FROM mascota WHERE id=?",
+            (pet_id,)
         ).fetchone()
 
-        if not existing:
-            raise HTTPException(status_code=404, detail="Mascota no encontrada")
+        print("EXISTE:", check)
 
+        check2 = conn.execute(
+            "SELECT id FROM mascota WHERE id=? AND id_usuario=?",
+            (pet_id, user_id)
+        ).fetchone()
+
+        print("MATCH USER:", check2)
         conn.execute(
             """
-            UPDATE mascota
-            SET nombre=?, edad=?, sexo=?, tamaño=?, vacunacion=?, condicion=?, contrato=?, cuidados_especiales=?,
-                id_tipo_mascota=?, id_veterinario=?
-            WHERE id=?
+            UPDATE mascota 
+            SET 
+                id_tipo_mascota=?,
+                nombre=?,
+                edad=?,
+                sexo=?,
+                tamaño=?,
+                vacunacion=?,
+                condicion=?,
+                contrato=?,
+                cuidados_especiales=?
+            WHERE id=? AND id_usuario=?
             """,
             (
-                m.nombre,
-                m.edad,
-                normalize_sex_to_db(m.sexo),
-                m.tamaño,
-                m.vacunacion,
-                m.condicion,
-                m.contrato,
-                m.cuidados_especiales,
-                m.id_tipo_mascota,
-                m.id_veterinario,
-                pet_id,
+                tipo_id, m.nombre, m.edad, m.sexo, m.peso, 
+                m.vacunas, m.condicion, m.contrato, m.cuidados_especiales, pet_id, user_id
             ),
         )
-
         conn.commit()
-
-        row = conn.execute(
-            """
-            SELECT 
-                id, nombre, edad, sexo, tamaño, vacunacion, condicion, contrato,
-                cuidados_especiales, id_tipo_mascota, id_veterinario
-            FROM mascota
-            WHERE id=?
-            """,
-            (pet_id,),
-        ).fetchone()
-
-        return serialize_pet_row(conn, row)
+        return {"id": pet_id, "status": "updated"}
 
 
 @app.delete("/pets/{pet_id}")
@@ -590,13 +612,18 @@ def delete_mascota(
                 detail="No se puede eliminar la mascota porque tiene una reserva activa"
             )
 
-        # 3. Eliminar mascota
-        conn.execute(
-            "DELETE FROM mascota WHERE id=?",
-            (pet_id,),
-        )
-
-        conn.commit()
+        # 3. Eliminar mascota. Si SQLite igual detecta una restricción, la convertimos en mensaje útil.
+        try:
+            conn.execute(
+                "DELETE FROM mascota WHERE id=?",
+                (pet_id,),
+            )
+            conn.commit()
+        except sqlite3.IntegrityError:
+            raise HTTPException(
+                status_code=400,
+                detail="No se puede eliminar la mascota porque tiene reservas registradas"
+            )
 
         return {"message": "Mascota eliminada correctamente"}
 

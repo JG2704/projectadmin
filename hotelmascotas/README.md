@@ -101,7 +101,7 @@ Tipo de usuario
 
 Necesidad
 - vacuna
-- alergia
+- conditions
 - dieta
 
 Estado de reserva
