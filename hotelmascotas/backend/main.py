@@ -105,6 +105,15 @@ class TarjetaCreate(BaseModel):
     numero: str
 
 
+<<<<<<< HEAD
+=======
+class NotificationCreateRequest(BaseModel):
+    tipo: str
+    descripcion: str
+    id_reserva: Optional[int] = None
+
+
+>>>>>>> 87e747d12d5f642f7e3eb8e07f24ae830fa32285
 # ── DB helpers ────────────────────────────────────────────────────────────────
 
 def get_conn() -> sqlite3.Connection:
@@ -273,6 +282,57 @@ def map_reservation_row(row: sqlite3.Row) -> Dict[str, Any]:
         "total": f"${row['precio']:.2f}",
     }
 
+def insert_notification(
+    conn: sqlite3.Connection,
+    user_id: int,
+    tipo: str,
+    descripcion: str,
+    id_reserva: Optional[int] = None,
+) -> None:
+    tipo_row = conn.execute(
+        "SELECT id FROM tipo_notificacion WHERE tipo=?",
+        (tipo,),
+    ).fetchone()
+
+    if not tipo_row:
+        raise HTTPException(
+            status_code=404,
+            detail=f"Tipo de notificación '{tipo}' no encontrado",
+        )
+
+    conn.execute(
+        """
+        INSERT INTO notificacion (
+            descripcion, fecha, leida, id_usuario, id_reserva, id_tipo_notificacion
+        )
+        VALUES (?, ?, 0, ?, ?, ?)
+        """,
+        (
+            descripcion,
+            datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
+            user_id,
+            id_reserva,
+            tipo_row["id"],
+        ),
+    )
+
+
+# ── Password helpers ──────────────────────────────────────────────────────────
+
+def hash_password(password: str) -> str:
+    """Return a bcrypt hash of the given plaintext password."""
+    return bcrypt.hashpw(password.encode("utf-8"), bcrypt.gensalt()).decode("utf-8")
+
+
+def verify_password(plain: str, hashed: str) -> bool:
+    """Return True if plain matches the stored bcrypt hash."""
+    try:
+        return bcrypt.checkpw(plain.encode("utf-8"), hashed.encode("utf-8"))
+    except Exception:
+        return False
+
+
+# ── DB initialisation ─────────────────────────────────────────────────────────
 
 # ── Password helpers ──────────────────────────────────────────────────────────
 
@@ -786,7 +846,7 @@ def cancel_res(
     with get_conn() as conn:
         active = conn.execute(
             """
-            SELECT r.id, r.id_habitacion, er.estado AS estado_actual
+            SELECT r.id, r.id_habitacion, er.estado AS estado_actual, m.nombre AS mascota_nombre
             FROM reserva r
             JOIN mascota m ON m.id = r.id_mascota
             JOIN estado_reserva er ON er.id = r.id_estado
@@ -794,16 +854,28 @@ def cancel_res(
             """,
             (res_id, user_id),
         ).fetchone()
+
         if not active:
             raise HTTPException(status_code=404, detail="Reserva no encontrada")
 
         cancelled_state = conn.execute(
             "SELECT id FROM estado_reserva WHERE estado='cancelada'"
         ).fetchone()
+
         conn.execute(
             "UPDATE reserva SET id_estado=? WHERE id=?",
             (cancelled_state["id"], res_id),
         )
+
+        # NUEVO: crear notificación de cancelación
+        insert_notification(
+            conn,
+            user_id=user_id,
+            tipo="reserva_cancelada",
+            descripcion=f"Tu reserva para {active['mascota_nombre']} fue cancelada.",
+            id_reserva=res_id,
+        )
+
         if (active["estado_actual"] or "").lower() == "activa":
             other_active = conn.execute(
                 """
@@ -815,11 +887,13 @@ def cancel_res(
                 """,
                 (active["id_habitacion"], res_id),
             ).fetchone()
+
             if not other_active:
                 conn.execute(
                     "UPDATE habitacion SET estado='disponible' WHERE id=?",
                     (active["id_habitacion"],),
                 )
+
         conn.commit()
 
     return {"success": True}
@@ -838,32 +912,90 @@ def get_notif(
             SELECT n.id, n.descripcion, n.fecha, tn.tipo
             FROM notificacion n
             JOIN tipo_notificacion tn ON tn.id = n.id_tipo_notificacion
-            WHERE n.id_usuario=?
+            WHERE n.id_usuario=? AND n.leida=0
             ORDER BY n.id DESC
             """,
             (user_id,),
         ).fetchall()
 
-    mapped = []
+        mapped = []
+    title_map = {
+        "reserva_confirmada": "Reserva confirmada",
+        "reserva_modificada": "Reserva modificada",
+        "reserva_cancelada": "Reserva cancelada",
+        "reserva_finalizada": "Reserva finalizada",
+        "actualizacion": "Actualización",
+        "recordatorio": "Recordatorio",
+        "novedad_app": "Novedad de la app",
+        "mascota_agregada": "Mascota agregada",
+        "mascota_eliminada": "Mascota eliminada",
+    }
+
     for row in rows:
         tipo = row["tipo"]
-        ui_type = "recordatorio"
-        if "reserva" in tipo:
+
+        if tipo in {"reserva_confirmada", "reserva_modificada", "reserva_finalizada", "reserva_cancelada"}:
             ui_type = "reserva"
+        elif tipo in {"mascota_agregada", "mascota_eliminada"}:
+            ui_type = "mascota"
         elif tipo in {"actualizacion", "novedad_app"}:
             ui_type = "update"
+        else:
+            ui_type = "recordatorio"
 
         mapped.append(
             {
                 "id": row["id"],
                 "type": ui_type,
-                "title": tipo.replace("_", " ").title(),
+                "title": title_map.get(tipo, tipo.replace("_", " ").title()),
                 "message": row["descripcion"],
                 "time": row["fecha"],
             }
         )
     return mapped
 
+# --- ADD NOTIFICATION ---
+
+@app.post("/notifications")
+def add_notification(
+    payload: NotificationCreateRequest,
+    x_user_id: Optional[int] = Header(default=None, alias="X-User-Id"),
+):
+    user_id = resolve_current_user_id(x_user_id)
+
+    with get_conn() as conn:
+        insert_notification(
+            conn,
+            user_id=user_id,
+            tipo=payload.tipo,
+            descripcion=payload.descripcion,
+            id_reserva=payload.id_reserva,
+        )
+        conn.commit()
+
+    return {"success": True}
+
+@app.patch("/notifications/read-all")
+def mark_all_notifications_read(
+    x_user_id: Optional[int] = Header(default=None, alias="X-User-Id"),
+):
+    user_id = resolve_current_user_id(x_user_id)
+
+    with get_conn() as conn:
+        conn.execute(
+            """
+            UPDATE notificacion
+            SET leida = 1
+            WHERE id_usuario = ? AND leida = 0
+            """,
+            (user_id,),
+        )
+        conn.commit()
+
+    return {"success": True}
+
+
+# --- ENDPOINTS DE PAGOS ---
 
 # --- ENDPOINTS DE PAGOS ---
 

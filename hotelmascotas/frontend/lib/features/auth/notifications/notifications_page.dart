@@ -51,6 +51,31 @@ class _NotificationsPageState extends State<NotificationsPage> {
     }
   }
 
+  Future<void> _markAllAsRead() async {
+    try {
+      final dio = await AuthService.getDioWithAuth();
+      await dio.patch('/notifications/read-all');
+
+      if (!mounted) return;
+
+      setState(() {
+        _notifications.clear();
+      });
+
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text("Todas las notificaciones fueron marcadas como leídas")),
+      );
+    } on DioException catch (e) {
+      debugPrint("Error al marcar notificaciones como leídas: ${e.message}");
+
+      if (!mounted) return;
+
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text("No se pudieron marcar las notificaciones")),
+      );
+    }
+  }
+
   @override
   Widget build(BuildContext context) {
     return Scaffold(
@@ -64,13 +89,8 @@ class _NotificationsPageState extends State<NotificationsPage> {
           Padding(
             padding: const EdgeInsets.only(right: 16),
             child: GestureDetector(
-              onTap: () {
-                ScaffoldMessenger.of(context).showSnackBar(
-                  const SnackBar(content: Text("Bandeja limpia")),
-                );
-                setState(() {
-                  _notifications.clear();
-                });
+              onTap: () async {
+                await _markAllAsRead();
               },
               child: const Center(
                 child: Text(
@@ -184,6 +204,10 @@ class _NotificationsPageState extends State<NotificationsPage> {
       case "recordatorio":
         borderColor = Colors.green;
         icon = Icons.notifications;
+        break;
+      case "mascota":
+        borderColor = Colors.orange;
+        icon = Icons.pets;
         break;
       default:
         borderColor = Colors.grey;

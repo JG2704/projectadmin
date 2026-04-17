@@ -47,7 +47,9 @@ INSERT INTO tipo_notificacion (id, tipo) VALUES
 (3, 'reserva_finalizada'),
 (4, 'actualizacion'),
 (5, 'recordatorio'),
-(6, 'novedad_app');
+(6, 'novedad_app'),
+(7, 'mascota_agregada'),
+(8, 'mascota_eliminada');
 
 INSERT INTO servicio (id, nombre, tipo_hospedaje, precio) VALUES
 (1, 'bano', 2, 15.0),

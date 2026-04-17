@@ -166,6 +166,19 @@ class _EditPetPageState extends State<EditPetPage> {
       final dio = await AuthService.getDioWithAuth();
       await dio.delete('/pets/$petId');
 
+<<<<<<< HEAD
+=======
+      try {
+        await dio.post(
+          '/notifications',
+          data: {
+            "tipo": "mascota_eliminada",
+            "descripcion": "Eliminaste a ${widget.pet.name} de tus mascotas.",
+          },
+        );
+      } catch (_) {}
+
+>>>>>>> 87e747d12d5f642f7e3eb8e07f24ae830fa32285
       if (!mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(

@@ -6,7 +6,6 @@ import 'edit_profile_page.dart';
 import 'help_page.dart';
 import 'terms_page.dart';
 import 'privacy_page.dart';
-import 'payment_methods_page.dart';
 import 'settings_page.dart';
 import '../pets/pets_page.dart';
 import '../history/history_page.dart'; 
